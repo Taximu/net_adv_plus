@@ -1,23 +1,29 @@
-1. Which scalability option is the primary choice for high-load systems?
+# .NET Advanced+ Mentoring Program
 
-Horizontal Scaling is the main choice. It is about adding extra machines or nodes to a pool, providing near-limitless scalability and higher fault tolerance compared to Vertical Scaling which is limited by hardware.
+This repository contains materials, code examples, and practical assignments for the .NET Advanced+ Mentoring Program, focusing on building high-performance, scalable distributed systems.
 
-2. What are the main challenges to address in horizontal scalability?
+## 🎯 Program Overview
 
-Data Consistency: Managing state and ensuring data consistency across distributed nodes (CAP theorem).
+The mentoring program is designed for experienced .NET developers who want to deepen their knowledge in building high-load systems, distributed architectures, and scalable applications.
 
-Inter-service Communication: Increased network complexity, latency, and potential for failures.
+## 📚 Training Modules
 
-Stateless Design: Designing apps to be stateless to allow any node to handle any request, often leading to usage of cache or database.
+### 1. High-Load Systems Requirements
 
-3. Name at least 3 metrics for hardware and software to consider when designing a high-load system.
+### 2. Practical Domain Intro: Online Job Scheduler
 
-Hardware Metrics: CPU Utilization, Memory Usage, Network I/O.
+### 3. Application Components Capabilities
 
-Software/Application Metrics: Throughput (requests/sec), latency (response time), errors rate.
+### 4. DB: ACID Properties and CAP Theorem
 
-4. Give examples of domains where high-load system design is required and is not required.
+### 5. DB: Replication
 
-Required: Social Media Platforms (VK, Telegram, Linkedin), E-commerce Marketplaces (Ozon, Wildberries), Online Payment Gateways (YooMoney, Tinkoff Checkout, Robokassa, ERIP), Video Streaming Services (Youtube, Kinopoisk, IVI.RU, VK Video).
+### 6. DB: Partitioning and Sharding
 
-Not Required: Internal company portals (EPAM's portals), Small Business Brochure Websites(Сайт визитка), Local Library Catalog System, Standalone Desktop Applications.
+### 7. DB: Consistency and Consensus
+
+### 8. Application Layer Scaling
+
+### 9. IO Layer Scaling
+
+### 10. Logging and Monitoring
