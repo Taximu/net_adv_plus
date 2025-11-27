@@ -75,6 +75,7 @@ The system should be easy for operations teams to manage. This means: Simple dep
 * What alternatives exist for row-based databases? What does the term NoSQL mean?
 
 The main alternatives are NoSQL databases. It's a family of databases designed for different jobs, especially when you're dealing with massive scale, speed, or unstructured/semi-structured data.
+NoSQL means that it is not only SQL.
 
 The main types are:
 
@@ -155,6 +156,16 @@ Use microservices for the core of your application to make it flexible and scala
 Use a monolithic design for something simple, like an internal reporting tool, where speed of development matters more than scalability.
 Use serverless functions for specific tasks, like processing image uploads or running scheduled jobs.
 The strength of a hybrid approach lies in its flexibility—it avoids a "one-size-fits-all" mindset and tailors each part of the system to its unique needs.
+
+* What is the main differences in SOA in comparison with microservices architecture?
+
+Granularity: SOA focuses on larger, reusable services that handle different business processes, while microservices are smaller, more focused services designed for specific tasks.
+
+Independence: Microservices are fully independent, with their own databases and deployment pipelines, whereas SOA services often share resources like a central database or an Enterprise Service Bus (ESB).
+
+Communication: SOA typically relies on heavier protocols like SOAP, XML and REST, while microservices favor lightweight protocols like HTTP/REST or gRPC. But no one said that it is not possible to build microservices with SOAP protocol as communication, it takes some time but it is possible.
+
+Flexibility: Microservices are more agile and scalable due to their independent nature, making them easier to develop, deploy, and scale individually. SOA has some parts that are monolithic and better suited for enterprise systems with tightly integrated components. Moreover microservices are for professional developers whereas SOA is for any kind, easier to build.
 
 ### Infrastructure Layer Capabilities
 
