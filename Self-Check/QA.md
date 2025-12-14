@@ -311,7 +311,7 @@ Show stale data. Users prefer seeing old posts over “try again later.”
 
 3. E-commerce shopping cart replication under partition — allow updates or block them?
 
-Let users add items locally, merge later. Blocking cart updates loses sales.  
+Let users add items locally, merge later. Blocking cart updates loses sales.
 
 4. Configuration service scenario — continue with stale config or block usage until updated?
 
