@@ -32,6 +32,7 @@ BEGIN TRAN;
 SELECT Balance FROM Accounts WHERE AccountID = 1;
 -- (Do not commit or rollback yet) RUN B SESSION
 COMMIT; --NOW GO TO SESSION B: UPDATE will finish.
+SELECT Balance FROM Accounts WHERE AccountID = 1;
 -- ### END ###
 
 -- ### Phantom Read - New rows appear between reads ###
@@ -60,9 +61,10 @@ BEGIN TRAN;
 SELECT COUNT(*) AS 'BEFORE_INSERT_WAS_COMITTED_ORDERS_COUNT' FROM Orders;
 -- Do not commit or rollback yet; keep the transaction open
 WAITFOR DELAY '00:00:10'
+SELECT COUNT(*) AS 'AFTER_DELAY_BEFORE_INSERT_WAS_COMITTED_ORDERS_COUNT' FROM Orders;
 COMMIT; -- WHEN YOU DO THIS INSERT will complete on session 'B'
-WAITFOR DELAY '00:00:05'
 SELECT COUNT(*)  AS 'AFTER_INSERT_WAS_COMITTED_ORDERS_COUNT'  FROM Orders;
+WAITFOR DELAY '00:00:05'
 -- ### END ###
 
 -- ### Snapshot Isolation - Read consistent snapshot ###
