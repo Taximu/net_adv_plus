@@ -31,6 +31,8 @@ SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 BEGIN TRAN;
 SELECT Balance FROM Accounts WHERE AccountID = 1;
 -- (Do not commit or rollback yet) RUN B SESSION
+WAITFOR DELAY '00:00:10';
+SELECT Balance FROM Accounts WHERE AccountID = 1;
 COMMIT; --NOW GO TO SESSION B: UPDATE will finish.
 SELECT Balance FROM Accounts WHERE AccountID = 1;
 -- ### END ###

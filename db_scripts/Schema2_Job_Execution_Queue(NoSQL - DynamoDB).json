@@ -1,0 +1,104 @@
+# Database: job_execution_db (DynamoDB)
+# Service: Job Orchestrator & Job Runner
+# Primary Use Cases: UC 2.1, UC 2.3 (execution data)
+
+# Table 1: ExecutionQueue (Time-series with TTL)
+TableName: ExecutionQueue
+KeySchema:
+  - AttributeName: queueId
+    KeyType: HASH  # Partition key: UUID
+  - AttributeName: scheduledFor
+    KeyType: RANGE # Sort key: ISO timestamp
+
+GlobalSecondaryIndexes:
+  - IndexName: PendingExecutionsIndex
+    KeySchema:
+      - AttributeName: queueStatus
+        KeyType: HASH   # "pending"
+      - AttributeName: priority
+        KeyType: RANGE  # 1-10 (ascending)
+    Projection:
+      ProjectionType: INCLUDE
+      NonKeyAttributes: ["jobId", "scheduleId", "scheduledFor", "executionContext"]
+
+  - IndexName: WorkerAssignmentsIndex
+    KeySchema:
+      - AttributeName: assignedWorkerId
+        KeyType: HASH
+      - AttributeName: assignedAt
+        KeyType: RANGE
+
+Attributes:
+  queueId: S  # UUID
+  jobId: S    # Reference to SQL job_definitions.job_id
+  scheduleId: S
+  scheduledFor: S  # ISO timestamp
+  
+  # Queue Status Management
+  queueStatus: S  # "pending", "assigned", "running", "completed", "failed", "cancelled"
+  priority: N     # 1-10
+  retryCount: N
+  maxRetries: N
+  
+  # Execution Context (snapshot at queue time)
+  executionContext:
+    parameters: M  # Map of parameter values
+    environment: S # "production", "staging"
+    triggerSource: S # "schedule", "manual", "api"
+    userId: S
+  
+  # Worker Assignment
+  assignedWorkerId: S  # Worker instance ID
+  assignedAt: S
+  workerHeartbeat: S   # Last heartbeat timestamp
+  
+  # Execution Timing
+  startedAt: S
+  completedAt: S
+  timeoutAt: S
+  
+  # Result Tracking
+  executionResult:
+    status: S       # "success", "failure", "timeout"
+    statusCode: N   # HTTP status code for API jobs
+    responseSizeBytes: N
+    errorDetails:
+      code: S
+      message: S
+      stackTrace: S
+  
+  # TTL for automatic cleanup (48 hours after completion)
+  ttl: N  # Unix timestamp
+
+# Table 2: WorkerNodes (for distributed execution)
+TableName: WorkerNodes
+KeySchema:
+  - AttributeName: workerId
+    KeyType: HASH
+  - AttributeName: registeredAt
+    KeyType: RANGE
+
+Attributes:
+  workerId: S
+  workerType: S  # "primary", "secondary", "spot"
+  instanceType: S  # AWS instance type
+  ipAddress: S
+  availabilityZone: S
+  
+  # Capacity
+  maxConcurrentJobs: N
+  currentJobCount: N
+  totalJobsProcessed: N
+  
+  # Health Monitoring
+  lastHeartbeat: S
+  status: S  # "healthy", "degraded", "unhealthy"
+  cpuUtilization: N
+  memoryUtilization: N
+  
+  # Capabilities
+  supportedJobTypes: SS  # String Set
+  tags: M  # Map of tags
+  
+  registeredAt: S
+  lastUpdatedAt: S
