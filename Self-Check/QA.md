@@ -213,3 +213,124 @@ SQL Injection: Blocking malicious database commands.
 Cross-Site Scripting (XSS): Preventing attackers from injecting harmful scripts into web pages.
 Cross-Site Request Forgery (CSRF): Stopping attackers from tricking users into performing unintended actions.
 By sitting between the internet and your web app, a WAF acts as a critical layer of defense against common web-based threats.
+
+## Module 4
+
+### ACID Transactions
+
+1. What does each component of ACID (Atomicity, Consistency, Isolation, Durability) ensure in a transaction?
+
+-**Atomicity**: The whole transaction happens, or none of it does. No partial updates.  
+-**Consistency**: Transactions keep the database in a valid state—rules, constraints stay intact.  
+-**Isolation**: Concurrent transactions don’t step on each other’s toes.  
+-**Durability**: Once committed, the transaction survives crashes.
+
+2. How does atomicity guarantee that a transaction is treated as an indivisible unit?
+
+It uses undo/rollback mechanisms. If anything fails mid-transaction, all changes are reverted, like it never started.
+
+3. What are the key differences between single-object and multi-object transactions, and why do these differences matter in system design?
+
+Single-object: only one item (e.g., a key-value). Multi-object: involves multiple items/tables. Multi-object is harder—needs coordination, locking, and can hurt performance, but it’s essential for correctness in things like moving money between accounts.
+
+4. List and explain the various isolation levels available in DBMS and their impact on concurrent transactions.
+
+-**Read Uncommitted**: Can read uncommitted data → dirty reads.  
+-**Read Committed**: Only read committed data, but non-repeatable reads happen.  
+-**Repeatable Read**: Same row stays consistent within transaction, but phantoms (new rows) can appear.  
+-**Serializable**: Full isolation—transactions act like they run one at a time.
+
+5. How do different isolation levels affect the occurrence of issues such as dirty reads, non-repeatable reads, and phantom reads?
+-Dirty reads: only possible in Read Uncommitted.  
+-Non-repeatable reads: prevented starting at Repeatable Read.  
+-Phantom reads: only fully prevented in Serializable.
+
+6. In a distributed system, what trade-offs might you face when choosing a higher isolation level versus a lower one?
+
+Higher isolation (like Serializable) means more locking, coordination, and latency. In distributed systems, that can kill availability and speed. Lower isolation improves performance but risks weird concurrency bugs.
+
+### Conceptual Understanding (Basics)
+
+1. What do each of the three letters in CAP (Consistency, Availability, Partition Tolerance) stand for, and what does each term mean?
+
+-**Consistency**: All nodes see the same data at the same time.  
+-**Availability**: Every request gets a response (success or failure).  
+-**Partition Tolerance**: System keeps working despite network splits.
+
+2. In your own words, state the CAP theorem. What does it assert about the ability of a distributed system to provide consistency, availability, and partition tolerance simultaneously?
+
+You can’t have all three at once in a distributed system when a network partition happens. You must choose between Consistency and Availability during the split.
+
+3. According to the CAP theorem, what trade-off must a system make when a network partition occurs?
+
+-**Choose C**: Stop responding from some nodes (lose Availability) to keep data consistent.  
+-**Choose A**: Keep responding but might serve stale/inconsistent data.
+
+4. Why is Partition Tolerance often considered mandatory in real distributed systems?
+
+In real systems, networks are unreliable. You can’t assume partitions won’t happen, so you must design for them. P is basically non-negotiable.
+
+5. The “choose any two” phrasing of CAP is sometimes seen as oversimplified. Why?
+
+Because you only really choose between C and A *during a partition*. In normal operation, you can aim for both. Also, it’s not all-or-nothing—there are shades of consistency and availability.
+
+### Trade-Offs and Real-World Design Considerations
+
+1. If a distributed system guarantees consistency and availability, what happens during a network partition?
+
+It can’t—if there’s a true partition, you must sacrifice either C or A. “CA” systems usually assume no partitions, which isn’t realistic in distributed networks.
+
+2. Give an example of a real-world CP system. Why does it choose consistency over availability?
+
+**ZooKeeper**. It chooses consistency because coordination services need exact agreement; it’ll become unavailable if it can’t guarantee it.
+
+3. Give an example of a real-world AP system. Why does it prioritize availability over consistency?
+
+**Cassandra** (default config). Prioritizes availability—keeps taking writes/reads even during partitions, but data may conflict temporarily.
+
+4. How does a CP system differ from an AP system during a partition in terms of user experience?
+
+CP: User sees errors or timeouts. AP: User can keep using the app but might read stale data or have later conflicts.
+
+5. What factors should you consider when deciding between CP and AP for a distributed application?
+
+-Business impact of stale vs. unavailable data.  
+-Whether conflicts can be resolved later.  
+-Latency requirements.  
+-User expectations (banking vs. social media).
+
+### Practical Application Scenarios
+
+1. Online banking system — prioritize consistency or availability under a partition?
+
+Must be consistent. Better to reject transactions than show wrong balance.  
+
+2. Social media feed — is it better to show stale data or disable the feed during a partition?
+
+Show stale data. Users prefer seeing old posts over “try again later.”  
+
+3. E-commerce shopping cart replication under partition — allow updates or block them?
+
+Let users add items locally, merge later. Blocking cart updates loses sales.
+
+4. Configuration service scenario — continue with stale config or block usage until updated?
+
+Stale config can cause broken behavior; better to fail clearly until updated config is consistent.
+
+### Advanced Topics: PACELC and Dynamic Adjustments
+
+1. What is the PACELC theorem, and how does it extend CAP?
+
+It extends CAP: *If Partition (P), choose between Availability and Consistency (A/C); Else (E), choose between Latency and Consistency (L/C)*. Acknowledges there’s a trade-off even without partitions.
+
+2. What is the latency vs. consistency trade-off in PACELC?
+
+Strong consistency often means higher latency (waiting for coordination). Weak consistency gives faster responses.
+
+3. What is tunable consistency, and how does it help adjust CAP trade-offs?
+
+Let the app decide per operation: e.g., read/write with quorum for strong consistency, or with one node for low latency. Used in Dynamo-style systems.
+
+4. How might a system dynamically change CAP preferences when network conditions change?
+
+Systems can detect network health and switch modes: e.g., strong consistency when network is fine, relax to available mode during partitions, or adjust quorum sizes. Helps balance based on current conditions.
