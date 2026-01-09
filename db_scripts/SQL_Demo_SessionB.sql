@@ -15,6 +15,7 @@ UPDATE Accounts SET Balance = 200 WHERE AccountID = 1;
 -- ### END ###
 
 -- ### Phantom Read - New rows appear between reads ###
+BEGIN TRAN;
 SET IDENTITY_INSERT Orders ON;
 INSERT INTO Orders (OrderID, Customer) VALUES (4, 'Ivan');
 COMMIT;
@@ -22,13 +23,15 @@ SET IDENTITY_INSERT Orders OFF;
 -- ### END ###
 
 -- ### Prevent Phantom - Block inserts in range ###
-INSERT INTO Orders (OrderID, Customer) VALUES (8, 'Phantom');
+SET IDENTITY_INSERT Orders ON;
+INSERT INTO Orders (OrderID, Customer) VALUES (11, 'Phantom');
+SET IDENTITY_INSERT Orders OFF;
 -- This statement will be BLOCKED until Session A commits or rolls back
 -- ### END ###
 
 -- ### Snapshot Isolation - Read consistent snapshot ###
 BEGIN TRAN;
-UPDATE Accounts SET Balance = 100 WHERE AccountID = 1;
+UPDATE Accounts SET Balance = 200 WHERE AccountID = 1;
 COMMIT;
 -- ### END ###
 
