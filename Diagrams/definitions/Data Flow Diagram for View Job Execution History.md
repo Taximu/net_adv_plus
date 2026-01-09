@@ -1,38 +1,137 @@
 # Data Flow Diagram for UC 2.3: View Job Execution History
 
-```mermaid
-flowchart TB
- subgraph Legend["Legend"]
-        L1["End User"]
-        L2["System Component"]
-        L3["Data Storage"]
-        L4["UI/Gateway"]
-  end
-    User["End User (client)"] -- "1. Request job execution history<br>(Job ID, Date Range, Filters)" --> UI["UI<br>(Web Application)"]
-    UI -- "2. Load UI assets" --> CloudFront["Amazon CloudFront<br>(CDN for Static Assets)"]
-    CloudFront -- "3. Forward API request" --> APIGateway["API Gateway<br>(Routing &amp; Security)"]
-    APIGateway -- "4. Route to BFF service" --> BFF["Backend for Frontend<br>(BFF Service)"]
-    BFF -- "5. Get job metadata & permissions" --> JobManager["Job Manager Service"]
-    JobManager -- "6. Query job details" --> JobDetailsDB[("Job Details DB<br>Amazon RDS PostgreSQL")]
-    JobDetailsDB -- "7. Return job definitions" --> JobManager
-    JobManager -- "8. Forward job metadata" --> BFF
-    BFF -- "9. Request execution history data" --> JobReporter["Job Reporter Service"]
-    JobReporter -- "10. Check cache for recent queries" --> ElastiCache[("Job Cache<br>Amazon ElastiCache Redis")]
-    ElastiCache -- "11. Return cached results (if available)" --> JobReporter
-    JobReporter -- "12. Query schedule information" --> JobOrchestrator["Job Orchestrator Service"]
-    JobOrchestrator -- "13. Get schedule data" --> ScheduleDB[("Schedule DB<br>Amazon RDS PostgreSQL")]
-    ScheduleDB -- "14. Return schedule records" --> JobOrchestrator
-    JobOrchestrator -- "15. Forward schedule info" --> JobReporter
-    JobReporter -- "16. Query job execution results" --> JobOutputsDB[("Job Outputs Database<br>Amazon S3 + Athena")]
-    JobOutputsDB -- "17. Return execution history<br>(logs, outputs, metrics)" --> JobReporter
-    JobReporter -- "18. Cache query results<br>(for future requests)" --> ElastiCache
-    JobReporter -- "19. Compile complete history report" --> BFF
-    BFF -- "20. Get user display preferences" --> DynamoDB[("User Preferences DB<br>Amazon DynamoDB")]
-    DynamoDB -- "21. Return user settings<br>(timezone, format, columns)" --> BFF
-    BFF -- "22. Format response per user preferences" --> APIGateway
-    APIGateway -- "23. Return formatted history data" --> UI
-    UI -- "24. Display job execution history<br>(charts, tables, logs)" --> User
-    JobReporter -- "25. Send query metrics" --> CloudWatch["DataDog<br>(Monitoring Dashboard)"]
-    BFF -- "26. Send response metrics" --> CloudWatch
-    title["<b>UC 2.3: View Job Execution History</b><br><br><i>Retrieve and display historical execution records for jobs</i>"]
+```plantuml
+@startuml
+skinparam componentStyle rectangle
+skinparam defaultFontName Arial
+skinparam titleFontSize 14
+skinparam legendFontSize 10
+left to right direction
+
+title UC 2.3: View Job Execution History\n\nRetrieve and display historical execution records for jobs
+
+legend top left
+  <color:#e8f5e8>█</color> : End User
+  <color:#e1f5fe>█</color> : System Component
+  <color:#f3e5f5>█</color> : Data Storage
+  <color:#fce4ec>█</color> : UI/Gateway
+  <color:#e8f5e8>█</color> -- : Database Replica
+end legend
+
+' Define components with stereotypes
+actor "End User\n(client)" as User <<Entity>> #e8f5e8
+
+' UI/Gateway Layer (Left side)
+rectangle "UI\nWeb Application" as UI <<UI>> #fce4ec
+rectangle "CloudFront\nCDN" as CloudFront <<UI>> #fce4ec
+rectangle "API Gateway\nRouting & Security" as APIGateway <<UI>> #fce4ec
+
+' BFF Layer
+rectangle "BFF Service" as BFF <<Component>> #e1f5fe
+
+' Service Layer
+rectangle "Job Manager\nService" as JobManager <<Component>> #e1f5fe
+rectangle "Job Orchestrator\nService" as JobOrchestrator <<Component>> #e1f5fe
+
+' Primary Databases (Right side)
+database "Job Details DB\nRDS PostgreSQL" as JobDetailsDB <<Storage>> #f3e5f5
+database "Schedule DB\nRDS PostgreSQL" as ScheduleDB <<Storage>> #f3e5f5
+database "Execution History DB\nRDS PostgreSQL" as JobHistoryDB <<Storage>> #f3e5f5
+database "Job Outputs DB\nS3 + Athena" as JobOutputsDB <<Storage>> #f3e5f5
+database "ElastiCache\nRedis" as ElastiCache <<Storage>> #f3e5f5
+database "User Preferences\nDynamoDB" as DynamoDB <<Storage>> #f3e5f5
+
+' Database Replicas (Rightmost)
+database "Job Details\nReplica" as JobDetailsReplica <<Replica>> #e8f5e8
+database "Schedule DB\nReplica" as ScheduleReplica <<Replica>> #e8f5e8
+database "History DB\nReplica" as HistoryReplica <<Replica>> #e8f5e8
+database "Redis\nReplica" as RedisReplica <<Replica>> #e8f5e8
+database "S3\nReplica" as S3Replica <<Replica>> #e8f5e8
+database "DynamoDB\nReplica" as DynamoDBReplica <<Replica>> #e8f5e8
+
+' Monitoring (Bottom)
+rectangle "DataDog\nMonitoring" as CloudWatch <<Monitoring>> #fff3e0
+rectangle "Monitoring\nBackup" as CloudWatchReplica <<Replica>> #e8f5e8
+
+' Main Request Flow (Left to Right)
+User -> UI : 1. Request history\nJob ID, Date Range, Filters
+UI -> CloudFront : 2. Load UI assets
+CloudFront -> APIGateway : 3. Forward API request
+APIGateway -> BFF : 4. Route to BFF
+
+' Metadata & Permissions Flow
+BFF -> JobManager : 5. Get metadata & permissions
+JobManager -> JobDetailsDB : 6. Query job details
+JobDetailsDB -> JobManager : 7. Return job definitions
+JobManager -> BFF : 8. Forward metadata
+
+' History Query Flow
+BFF -> JobOrchestrator : 9. Request execution history
+JobOrchestrator -> ElastiCache : 10. Check cache
+ElastiCache -> JobOrchestrator : 11. Return cache\n(if available)
+
+' Alternative Cache Path
+note on link
+  Cache Hit: Skip 12-17
+end note
+
+' Database Query Flow (to the right)
+JobOrchestrator -> ScheduleDB : 12. Query schedule info
+ScheduleDB -> JobOrchestrator : 13. Return schedule
+
+JobOrchestrator -> JobHistoryDB : 14. Query execution metadata
+JobHistoryDB -> JobOrchestrator : 15. Return timing,\nstatus, metrics
+
+JobOrchestrator -> JobOutputsDB : 16. Query detailed logs
+JobOutputsDB -> JobOrchestrator : 17. Return logs,\noutputs, errors
+
+' Cache and Compile Results (flowing back left)
+JobOrchestrator -> ElastiCache : 18. Cache query results
+JobOrchestrator -> BFF : 19. Compile history report
+
+' User Preferences (to the right and back)
+BFF -> DynamoDB : 20. Get user preferences
+DynamoDB -> BFF : 21. Return settings\ntimezone, format
+
+' Response Flow (back to left)
+BFF -> APIGateway : 22. Format response
+APIGateway -> UI : 23. Return formatted data
+UI -> User : 24. Display history\ncharts, tables, logs
+
+' Monitoring Flows (downward)
+JobOrchestrator -> CloudWatch : 25. Send query metrics
+BFF -> CloudWatch : 26. Send response metrics
+
+' Replication Links (horizontal, rightward)
+JobDetailsDB -[dashed]-> JobDetailsReplica : read replica
+ScheduleDB -[dashed]-> ScheduleReplica : read replica
+JobHistoryDB -[dashed]-> HistoryReplica : read replica
+ElastiCache -[dashed]-> RedisReplica : read replica
+JobOutputsDB -[dashed]-> S3Replica : cross-region
+DynamoDB -[dashed]-> DynamoDBReplica : global table
+CloudWatch -[dashed]-> CloudWatchReplica : backup
+
+' Layout adjustments for better flow
+User -[hidden]- UI
+UI -[hidden]- CloudFront
+CloudFront -[hidden]- APIGateway
+APIGateway -[hidden]- BFF
+
+BFF -[hidden]- JobManager
+BFF -[hidden]- JobOrchestrator
+
+JobManager -[hidden]- JobDetailsDB
+JobOrchestrator -[hidden]- ScheduleDB
+JobOrchestrator -[hidden]- JobHistoryDB
+JobOrchestrator -[hidden]- JobOutputsDB
+JobOrchestrator -[hidden]- ElastiCache
+
+JobDetailsDB -[hidden]- JobDetailsReplica
+ScheduleDB -[hidden]- ScheduleReplica
+JobHistoryDB -[hidden]- HistoryReplica
+ElastiCache -[hidden]- RedisReplica
+JobOutputsDB -[hidden]- S3Replica
+DynamoDB -[hidden]- DynamoDBReplica
+
+@enduml
 ```
