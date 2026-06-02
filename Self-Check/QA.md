@@ -334,3 +334,83 @@ Let the app decide per operation: e.g., read/write with quorum for strong consis
 4. How might a system dynamically change CAP preferences when network conditions change?
 
 Systems can detect network health and switch modes: e.g., strong consistency when network is fine, relax to available mode during partitions, or adjust quorum sizes. Helps balance based on current conditions.
+
+## Module 4_2
+
+### 1. Replication Lag
+
+1. What is replication lag, and why does it occur?
+
+The delay between a write on the leader and its application on a follower. Occurs due to network latency, follower load, or single-threaded log apply.
+
+2. What is one way to detect replication lag in a production environment?
+
+Monitor seconds_behind_master (MySQL) or pg_stat_replication.replay_lag (PostgreSQL).
+
+3. Name one strategy to mitigate the negative impact of replication lag.
+
+Read from the leader for critical or recently updated data; use followers only for tolerant reads.
+
+4. What is a potential application-level consequence of replication lag?
+
+Stale reads (e.g., user sees their own comment missing after a refresh).
+
+### 2. Leader-Follower (Master-Slave) Replication
+
+1. In a leader-follower replication setup, why might an application choose asynchronous replication over synchronous replication?
+
+Performance — synchronous replication adds write latency and risk of unavailability if a follower fails.
+
+2. How is failover typically handled if the leader fails in a leader-follower system?
+
+Promote a follower to leader; update application/database config to point to the new leader.
+
+3. What is one major advantage of leader-follower replication?
+
+Strongly consistent reads from the leader, and horizontal read scaling via followers.
+
+4. Give one reason an organization might still prefer a single-leader approach despite scalability concerns.
+
+Simplicity — no conflict resolution logic needed, easier application code.
+
+### 3. Multi-Leader Replication
+
+1. In multi-leader replication, why do conflicts occur more frequently than in leader-follower systems?
+
+Writes can occur concurrently on different leaders, leading to conflicting updates on the same data.
+
+2. How can applications handle conflicting writes in a multi-leader setup?
+
+Conflict-free replicated data types (CRDTs), last-write-wins (LWW), or application-specific merge logic.
+
+3. What is a typical use case for multi-leader replication?
+
+Multi-datacenter deployments (writes local to each region, asynchronous cross-replication).
+
+4. What is the main reason some systems choose multi-leader replication despite the complexity of conflict resolution?
+
+Lower write latency for globally distributed users (write locally, replicate async).
+
+### 4. Leaderless Replication
+
+1. How does leaderless replication achieve consistency without a single leader node?
+
+Uses quorums (e.g., W + R > N) where reads/writes go to multiple replicas without a central coordinator.
+
+2. What role does "hinted handoff" play in leaderless replication systems?
+
+A replica temporarily stores writes for a down node and replays them when it recovers.
+
+3. What is read repair, and why is it important in leaderless replication?
+
+During a read, the client checks multiple replicas and updates stale ones — repairs inconsistency proactively.
+
+4. How does setting W = N (where N is the total number of replicas) impact write availability in a leaderless system?
+
+Write availability drops if any replica is down (W = N requires all replicas to succeed). Trades availability for consistency.
+
+### 5. Practical Replication Considerations
+
+1. Which replication strategy (leader-follower, multi-leader, or leaderless) typically prioritizes availability over strong consistency?
+
+Leaderless replication (with quorums tuned for availability) and some multi-leader async setups.

@@ -1,0 +1,92 @@
+networks:
+  job-scheduler-net:
+    driver: bridge
+
+volumes:
+  primary-data:
+  standby-data:
+  replica1-data:
+  replica2-data:
+
+services:
+  postgres-primary:
+    image: postgres:15
+    container_name: postgres-primary
+    environment:
+      POSTGRES_USER: job_admin
+      POSTGRES_PASSWORD: StrongP@ssw0rd
+      POSTGRES_DB: job_config_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - primary-data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    command: >
+      postgres -c wal_level=replica
+               -c max_wal_senders=10
+               -c wal_keep_size=512MB
+               -c hot_standby=on
+               -c max_replication_slots=10
+    networks:
+      - job-scheduler-net
+
+  postgres-standby:
+    image: postgres:15
+    container_name: postgres-standby
+    environment:
+      POSTGRES_USER: job_admin
+      POSTGRES_PASSWORD: StrongP@ssw0rd
+      POSTGRES_DB: job_config_db
+    ports:
+      - "5433:5432"
+    depends_on:
+      - postgres-primary
+    volumes:
+      - standby-data:/var/lib/postgresql/data
+    command: >
+      postgres -c wal_level=replica
+               -c hot_standby=on
+               -c primary_conninfo='host=postgres-primary port=5432 user=replicator password=ReplicaPass123'
+               -c hot_standby_feedback=on
+    networks:
+      - job-scheduler-net
+
+  postgres-replica1:
+    image: postgres:15
+    container_name: postgres-replica1
+    environment:
+      POSTGRES_USER: job_admin
+      POSTGRES_PASSWORD: StrongP@ssw0rd
+      POSTGRES_DB: job_config_db
+    ports:
+      - "5434:5432"
+    depends_on:
+      - postgres-primary
+    volumes:
+      - replica1-data:/var/lib/postgresql/data
+    command: >
+      postgres -c wal_level=replica
+               -c hot_standby=on
+               -c primary_conninfo='host=postgres-primary port=5432 user=replicator password=ReplicaPass123'
+    networks:
+      - job-scheduler-net
+
+  postgres-replica2:
+    image: postgres:15
+    container_name: postgres-replica2
+    environment:
+      POSTGRES_USER: job_admin
+      POSTGRES_PASSWORD: StrongP@ssw0rd
+      POSTGRES_DB: job_config_db
+    ports:
+      - "5435:5432"
+    depends_on:
+      - postgres-primary
+    volumes:
+      - replica2-data:/var/lib/postgresql/data
+    command: >
+      postgres -c wal_level=replica
+               -c hot_standby=on
+               -c primary_conninfo='host=postgres-primary port=5432 user=replicator password=ReplicaPass123'
+    networks:
+      - job-scheduler-net

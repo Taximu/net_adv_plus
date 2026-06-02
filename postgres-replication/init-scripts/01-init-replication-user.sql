@@ -1,0 +1,5 @@
+CREATE USER replicator WITH REPLICATION ENCRYPTED PASSWORD 'ReplicaPass123';
+
+GRANT CONNECT ON DATABASE job_config_db TO replicator;
+GRANT USAGE ON SCHEMA public TO replicator;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO replicator;
