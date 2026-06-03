@@ -1,104 +1,133 @@
-# Database: job_execution_db (DynamoDB)
-# Service: Job Orchestrator & Job Runner
-# Primary Use Cases: UC 2.1, UC 2.3 (execution data)
-
-# Table 1: ExecutionQueue (Time-series with TTL)
-TableName: ExecutionQueue
-KeySchema:
-  - AttributeName: queueId
-    KeyType: HASH  # Partition key: UUID
-  - AttributeName: scheduledFor
-    KeyType: RANGE # Sort key: ISO timestamp
-
-GlobalSecondaryIndexes:
-  - IndexName: PendingExecutionsIndex
-    KeySchema:
-      - AttributeName: queueStatus
-        KeyType: HASH   # "pending"
-      - AttributeName: priority
-        KeyType: RANGE  # 1-10 (ascending)
-    Projection:
-      ProjectionType: INCLUDE
-      NonKeyAttributes: ["jobId", "scheduleId", "scheduledFor", "executionContext"]
-
-  - IndexName: WorkerAssignmentsIndex
-    KeySchema:
-      - AttributeName: assignedWorkerId
-        KeyType: HASH
-      - AttributeName: assignedAt
-        KeyType: RANGE
-
-Attributes:
-  queueId: S  # UUID
-  jobId: S    # Reference to SQL job_definitions.job_id
-  scheduleId: S
-  scheduledFor: S  # ISO timestamp
-  
-  # Queue Status Management
-  queueStatus: S  # "pending", "assigned", "running", "completed", "failed", "cancelled"
-  priority: N     # 1-10
-  retryCount: N
-  maxRetries: N
-  
-  # Execution Context (snapshot at queue time)
-  executionContext:
-    parameters: M  # Map of parameter values
-    environment: S # "production", "staging"
-    triggerSource: S # "schedule", "manual", "api"
-    userId: S
-  
-  # Worker Assignment
-  assignedWorkerId: S  # Worker instance ID
-  assignedAt: S
-  workerHeartbeat: S   # Last heartbeat timestamp
-  
-  # Execution Timing
-  startedAt: S
-  completedAt: S
-  timeoutAt: S
-  
-  # Result Tracking
-  executionResult:
-    status: S       # "success", "failure", "timeout"
-    statusCode: N   # HTTP status code for API jobs
-    responseSizeBytes: N
-    errorDetails:
-      code: S
-      message: S
-      stackTrace: S
-  
-  # TTL for automatic cleanup (48 hours after completion)
-  ttl: N  # Unix timestamp
-
-# Table 2: WorkerNodes (for distributed execution)
-TableName: WorkerNodes
-KeySchema:
-  - AttributeName: workerId
-    KeyType: HASH
-  - AttributeName: registeredAt
-    KeyType: RANGE
-
-Attributes:
-  workerId: S
-  workerType: S  # "primary", "secondary", "spot"
-  instanceType: S  # AWS instance type
-  ipAddress: S
-  availabilityZone: S
-  
-  # Capacity
-  maxConcurrentJobs: N
-  currentJobCount: N
-  totalJobsProcessed: N
-  
-  # Health Monitoring
-  lastHeartbeat: S
-  status: S  # "healthy", "degraded", "unhealthy"
-  cpuUtilization: N
-  memoryUtilization: N
-  
-  # Capabilities
-  supportedJobTypes: SS  # String Set
-  tags: M  # Map of tags
-  
-  registeredAt: S
-  lastUpdatedAt: S
+{
+  "metadata": {
+    "database": "job_execution_db (DynamoDB)",
+    "service": "Job Orchestrator & Job Runner",
+    "primaryUseCases": "UC 2.1, UC 2.3 (execution data)"
+  },
+  "tables": [
+    {
+      "tableName": "ExecutionQueue",
+      "description": "Time-series with TTL",
+      "keySchema": [
+        {
+          "attributeName": "queueId",
+          "keyType": "HASH",
+          "description": "Partition key: UUID"
+        },
+        {
+          "attributeName": "scheduledFor",
+          "keyType": "RANGE",
+          "description": "Sort key: ISO timestamp"
+        }
+      ],
+      "globalSecondaryIndexes": [
+        {
+          "indexName": "PendingExecutionsIndex",
+          "keySchema": [
+            {
+              "attributeName": "queueStatus",
+              "keyType": "HASH",
+              "description": "e.g. pending"
+            },
+            {
+              "attributeName": "priority",
+              "keyType": "RANGE",
+              "description": "1-10 ascending"
+            }
+          ],
+          "projection": {
+            "projectionType": "INCLUDE",
+            "nonKeyAttributes": [
+              "jobId",
+              "scheduleId",
+              "scheduledFor",
+              "executionContext"
+            ]
+          }
+        },
+        {
+          "indexName": "WorkerAssignmentsIndex",
+          "keySchema": [
+            { "attributeName": "assignedWorkerId", "keyType": "HASH" },
+            { "attributeName": "assignedAt", "keyType": "RANGE" }
+          ]
+        }
+      ],
+      "attributes": {
+        "queueId": { "type": "S", "description": "UUID" },
+        "jobId": { "type": "S", "description": "Reference to SQL job_definitions.job_id" },
+        "scheduleId": { "type": "S" },
+        "scheduledFor": { "type": "S", "description": "ISO timestamp" },
+        "queueStatus": {
+          "type": "S",
+          "description": "pending, assigned, running, completed, failed, cancelled"
+        },
+        "priority": { "type": "N", "description": "1-10" },
+        "retryCount": { "type": "N" },
+        "maxRetries": { "type": "N" },
+        "executionContext": {
+          "type": "M",
+          "description": "Snapshot at queue time",
+          "attributes": {
+            "parameters": { "type": "M", "description": "Map of parameter values" },
+            "environment": { "type": "S", "description": "production, staging" },
+            "triggerSource": { "type": "S", "description": "schedule, manual, api" },
+            "userId": { "type": "S" }
+          }
+        },
+        "assignedWorkerId": { "type": "S", "description": "Worker instance ID" },
+        "assignedAt": { "type": "S" },
+        "workerHeartbeat": { "type": "S", "description": "Last heartbeat timestamp" },
+        "startedAt": { "type": "S" },
+        "completedAt": { "type": "S" },
+        "timeoutAt": { "type": "S" },
+        "executionResult": {
+          "type": "M",
+          "attributes": {
+            "status": { "type": "S", "description": "success, failure, timeout" },
+            "statusCode": { "type": "N", "description": "HTTP status for API jobs" },
+            "responseSizeBytes": { "type": "N" },
+            "errorDetails": {
+              "type": "M",
+              "attributes": {
+                "code": { "type": "S" },
+                "message": { "type": "S" },
+                "stackTrace": { "type": "S" }
+              }
+            }
+          }
+        },
+        "ttl": {
+          "type": "N",
+          "description": "Unix timestamp; TTL for cleanup ~48h after completion"
+        }
+      }
+    },
+    {
+      "tableName": "WorkerNodes",
+      "description": "Distributed execution worker registry",
+      "keySchema": [
+        { "attributeName": "workerId", "keyType": "HASH" },
+        { "attributeName": "registeredAt", "keyType": "RANGE" }
+      ],
+      "attributes": {
+        "workerId": { "type": "S" },
+        "workerType": { "type": "S", "description": "primary, secondary, spot" },
+        "instanceType": { "type": "S", "description": "AWS instance type" },
+        "ipAddress": { "type": "S" },
+        "availabilityZone": { "type": "S" },
+        "maxConcurrentJobs": { "type": "N" },
+        "currentJobCount": { "type": "N" },
+        "totalJobsProcessed": { "type": "N" },
+        "lastHeartbeat": { "type": "S" },
+        "status": { "type": "S", "description": "healthy, degraded, unhealthy" },
+        "cpuUtilization": { "type": "N" },
+        "memoryUtilization": { "type": "N" },
+        "supportedJobTypes": { "type": "SS", "description": "String set" },
+        "tags": { "type": "M", "description": "Map of tags" },
+        "registeredAt": { "type": "S" },
+        "lastUpdatedAt": { "type": "S" }
+      }
+    }
+  ]
+}

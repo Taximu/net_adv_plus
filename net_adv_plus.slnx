@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/JobScheduler.DAL/">
+    <Project Path="JobScheduler.DAL/src/JobScheduler.DAL/JobScheduler.DAL.csproj" />
+  </Folder>
+  <Folder Name="/JobScheduler.DAL/tests/DynamoDb/">
+    <Project Path="JobScheduler.DAL/tests/JobScheduler.DAL.DynamoDb.Tests/JobScheduler.DAL.DynamoDb.Tests.csproj" />
+  </Folder>
+  <Folder Name="/JobScheduler.DAL/tests/Postgres/">
+    <Project Path="JobScheduler.DAL/tests/JobScheduler.DAL.Postgres.Tests/JobScheduler.DAL.Postgres.Tests.csproj" />
+  </Folder>
+  <Folder Name="/postgres-replication/tests/">
+    <Project Path="postgres-replication/tests/PostgreSql.Replication.Tests/PostgreSql.Replication.Tests.csproj" />
+  </Folder>
+</Solution>
