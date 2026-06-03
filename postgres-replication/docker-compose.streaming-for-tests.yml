@@ -1,4 +1,7 @@
 # Streaming replication stack for integration tests (Bitnami PostgreSQL).
+# Primary mounts only *.sql from ./init-scripts (Bitnami already configures replication
+# and pg_hba). Avoid mounting 00-pg_hba-replication.sh from Windows: CRLF line endings
+# break the shebang inside Linux (env: 'sh\r'). Replicas inherit data via streaming.
 # Ports align with common local layout: primary 5432, replicas 5434 / 5435.
 #
 # Start:  docker compose -f docker-compose.streaming-for-tests.yml up -d
@@ -22,6 +25,9 @@ services:
       - "5432:5432"
     volumes:
       - streaming_primary_data:/bitnami/postgresql
+      - ./init-scripts/01-init-replication-user.sql:/docker-entrypoint-initdb.d/01-init-replication-user.sql:ro
+      - ./init-scripts/02-schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
+      - ./init-scripts/03-seed-data.sql:/docker-entrypoint-initdb.d/03-seed-data.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U job_admin -d job_config_db -h 127.0.0.1 || exit 1"]
       interval: 5s

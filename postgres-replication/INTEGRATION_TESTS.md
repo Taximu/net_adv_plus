@@ -24,11 +24,24 @@ Set **`REPLICATION_TESTS_USE_EXTERNAL=1`** to skip Testcontainers. Then supply c
 
 Defaults match `docker-compose.streaming-for-tests.yml` (`job_admin` / `StrongTestPass123`, ports **5432 / 5434 / 5435**).
 
-## Manual compose (optional, same as before)
+## Manual compose (optional)
 
-`docker-compose-postgres-replication.yml` starts multiple Postgres instances, but **empty data directories plus `primary_conninfo` alone do not create streaming standbys** (you would need `pg_basebackup` / `standby.signal`, etc.). `setup-working.ps1` instead **restores dumps** to each node, so those nodes are **independent databases**, not WAL replicas.
+### `docker-compose-postgres-replication.yml` (app passwords + init-scripts)
 
-For a **manual** replication stack aligned with the tests:
+Uses the same **Bitnami** streaming model as `docker-compose.streaming-for-tests.yml`: primary on **5432**, streaming standbys on **5433** (standby), **5434**, **5435**; `job_admin` / **`StrongP@ssw0rd`**; `./init-scripts` run on the **primary** only. First boot can take **~60–120 seconds** while three replicas complete base backups.
+
+```bash
+cd postgres-replication
+docker compose -f docker-compose-postgres-replication.yml up -d
+```
+
+`setup-working.ps1` recreates the stack and prints row counts when replicas are healthy.
+
+**External tests** against this file: set `PG_PRIMARY_CONNECTION_STRING` and replica env vars to ports **5434** and **5435** (or include **5433** if you extend the tests) with password **`StrongP@ssw0rd`**.
+
+### `docker-compose.streaming-for-tests.yml` (integration-test credentials)
+
+The **primary** bind-mounts only `01-init-replication-user.sql`, `02-schema.sql`, and `03-seed-data.sql` into `/docker-entrypoint-initdb.d` (not the whole `init-scripts` folder: `00-pg_hba-replication.sh` is for the official `postgres` image and **CRLF on Windows** breaks the shebang under Linux). Replicas do not run those scripts; they receive the same tables via streaming replication.
 
 ```bash
 cd postgres-replication
@@ -50,6 +63,8 @@ Tear down:
 
 ```bash
 docker compose -f docker-compose.streaming-for-tests.yml down -v
+# or
+docker compose -f docker-compose-postgres-replication.yml down -v
 ```
 
 ## Tests (summary)
@@ -62,4 +77,4 @@ docker compose -f docker-compose.streaming-for-tests.yml down -v
 | `Replica_rejects_writes_to_permanent_tables` | Standby is read-only (SQLSTATE `25006`) |
 | `Each_replica_reports_non_null_wal_receive_lsn` | Standbys report a WAL receive LSN (receiving from primary) |
 
-If you later wire **true** streaming into `docker-compose-postgres-replication.yml`, point the same environment variables at those ports and these tests should pass unchanged (adjust passwords in env vars if they differ from the Bitnami test stack).
+Both compose files provide **true** streaming replication; use the env vars above with the password that matches the file you started (`StrongTestPass123` vs `StrongP@ssw0rd`).
