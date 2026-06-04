@@ -28,16 +28,18 @@ Defaults match `docker-compose.streaming-for-tests.yml` (`job_admin` / `StrongTe
 
 ### `docker-compose-postgres-replication.yml` (app passwords + init-scripts)
 
-Uses the same **Bitnami** streaming model as `docker-compose.streaming-for-tests.yml`: primary on **5432**, streaming standbys on **5433** (standby), **5434**, **5435**; `job_admin` / **`StrongP@ssw0rd`**; `./init-scripts` run on the **primary** only. First boot can take **~60–120 seconds** while three replicas complete base backups.
+Uses **official `postgres:15`** (not Bitnami): primary on **5432**, streaming replicas on **5434** and **5435**; `job_admin` / **`StrongP@ssw0rd`**; `./init-scripts` run on the **primary** only. Replicas use **`replica-entrypoint.sh`** (`pg_basebackup` + `standby.signal`), not initdb, so they match the primary. First boot can take **~60–120 seconds** while two replicas complete base backups. Init applies **`job_schedules` HASH partitioning** (four child tables) and seed data with **76** schedule rows for partition distribution demos — see **`JobScheduler.DAL/docs/partitioning-strategy.md`**.
 
 ```bash
 cd postgres-replication
 docker compose -f docker-compose-postgres-replication.yml up -d
 ```
 
+Compose **`name: postgres-official-replication`** keeps volumes and state separate from the Bitnami streaming project.
+
 `setup-working.ps1` recreates the stack and prints row counts when replicas are healthy.
 
-**External tests** against this file: set `PG_PRIMARY_CONNECTION_STRING` and replica env vars to ports **5434** and **5435** (or include **5433** if you extend the tests) with password **`StrongP@ssw0rd`**.
+**External tests** against this file: set `PG_PRIMARY_CONNECTION_STRING` and replica env vars to ports **5434** and **5435** with password **`StrongP@ssw0rd`**.
 
 ### `docker-compose.streaming-for-tests.yml` (integration-test credentials)
 
@@ -48,7 +50,11 @@ cd postgres-replication
 docker compose -f docker-compose.streaming-for-tests.yml up -d
 ```
 
-Wait until health checks are green (first boot often **60–90 seconds**). Free host ports **5432, 5434, 5435** first.
+Wait until health checks are green (first boot often **60–90 seconds**). Free host ports **5432, 5434, 5435** first (stop the official stack or anything else bound there).
+
+This file sets Compose **`name: postgres-streaming-for-tests`** so its project is separate from **`docker-compose-postgres-replication.yml`** (`name: postgres-official-replication`). Container names are generated from the project name (no fixed `container_name`), so logs look like: `docker compose -f docker-compose.streaming-for-tests.yml logs postgres-primary`.
+
+**If the Bitnami primary exits during init** with `00-pg_hba-replication.sh` in the logs, Compose almost certainly **merged** this file with `docker-compose-postgres-replication.yml` (for example `COMPOSE_FILE` lists both YAMLs, or `docker compose -f A -f B`). That adds a bind mount of the **entire** `./init-scripts` directory; `00-pg_hba-replication.sh` is only for the **official** image. The script now **skips** under Bitnami, but you should still use **one** compose file per stack. Remove stale fixed-name containers if you see name conflicts: `docker rm -f postgres-primary-streaming` (legacy).
 
 Images use **`bitnamilegacy/postgresql`** (pinned tag) because the short `bitnami/postgresql:15` tag is no longer published on Docker Hub for general use.
 

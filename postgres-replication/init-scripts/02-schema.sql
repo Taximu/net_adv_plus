@@ -73,9 +73,10 @@ CREATE TABLE job_parameters (
     UNIQUE(job_id, parameter_set, parameter_name)
 );
 
--- Job Schedules Table
+-- Job Schedules Table (declarative partitioning: HASH by schedule_id, 4 partitions)
+-- Rationale: partition key must appear in PK; schedule_id is the natural row id and spreads rows evenly for UUIDs.
 CREATE TABLE job_schedules (
-    schedule_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    schedule_id UUID NOT NULL DEFAULT gen_random_uuid(),
     job_id UUID NOT NULL,
     schedule_name VARCHAR(200) NOT NULL,
     schedule_type VARCHAR(20) NOT NULL,
@@ -96,8 +97,14 @@ CREATE TABLE job_schedules (
     status VARCHAR(20) DEFAULT 'active',
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (job_id) REFERENCES job_definitions(job_id) ON DELETE CASCADE
-);
+    FOREIGN KEY (job_id) REFERENCES job_definitions(job_id) ON DELETE CASCADE,
+    PRIMARY KEY (schedule_id)
+) PARTITION BY HASH (schedule_id);
+
+CREATE TABLE job_schedules_p0 PARTITION OF job_schedules FOR VALUES WITH (MODULUS 4, REMAINDER 0);
+CREATE TABLE job_schedules_p1 PARTITION OF job_schedules FOR VALUES WITH (MODULUS 4, REMAINDER 1);
+CREATE TABLE job_schedules_p2 PARTITION OF job_schedules FOR VALUES WITH (MODULUS 4, REMAINDER 2);
+CREATE TABLE job_schedules_p3 PARTITION OF job_schedules FOR VALUES WITH (MODULUS 4, REMAINDER 3);
 
 -- Schedule Dependencies Table
 CREATE TABLE schedule_dependencies (

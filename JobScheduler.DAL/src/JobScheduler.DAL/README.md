@@ -5,6 +5,8 @@
 ### Architecture
 - **Write operations** -> Primary database (Port 5432)
 - **Read operations** -> Read replicas (Port 5434, 5435) with round-robin load balancing
+- **`job_schedules`** is **HASH-partitioned** by `schedule_id` (4 partitions) on the primary; replicas replay the same layout. See **[`../../docs/partitioning-strategy.md`](../../docs/partitioning-strategy.md)**.
+- **`JobScheduleRepository`** binds **`@SchedulePartitionKey`** on CRUD where the partition key applies, resolves **`tableoid::regclass`** for **Debug** logs (physical child table per operation), and logs a **partition histogram** for **`GetByJobIdAsync`**. `AddDataAccessLayer` registers **`AddLogging()`** so `ILogger<JobScheduleRepository>` resolves in minimal hosts.
 
 ### Connection Strings
 | Role | Port | Connection String |

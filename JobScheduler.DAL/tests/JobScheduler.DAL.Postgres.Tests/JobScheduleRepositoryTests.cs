@@ -12,6 +12,47 @@ public sealed class JobScheduleRepositoryTests
     public JobScheduleRepositoryTests(PostgresDalFixture fixture) => _fixture = fixture;
 
     [Fact]
+    public async Task GetByIdAsync_throws_when_explicit_partition_key_mismatches_schedule_id()
+    {
+        using var scope = _fixture.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IJobScheduleRepository>();
+        var scheduleId = Guid.NewGuid();
+        var wrongKey = Guid.NewGuid();
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => repo.GetByIdAsync(scheduleId, wrongKey));
+        Assert.Equal("schedulePartitionKey", ex.ParamName);
+    }
+
+    [Fact]
+    public async Task UpdateAsync_throws_when_explicit_partition_key_mismatches_schedule()
+    {
+        using var scope = _fixture.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IJobScheduleRepository>();
+        var created = await repo.CreateAsync(new JobSchedule
+        {
+            JobId = _fixture.SeedJobId,
+            ScheduleName = $"dal-partkey-{Guid.NewGuid():N}",
+            ScheduleType = "cron",
+            CronExpression = "0 1 * * *",
+            Timezone = "UTC",
+            StartDate = DateOnly.FromDateTime(DateTime.UtcNow.Date),
+            IsEnabled = true,
+            Priority = 2,
+            Status = "active"
+        });
+
+        try
+        {
+            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
+                repo.UpdateAsync(created, Guid.NewGuid()));
+            Assert.Equal("schedulePartitionKey", ex.ParamName);
+        }
+        finally
+        {
+            await repo.DeleteAsync(created.ScheduleId);
+        }
+    }
+
+    [Fact]
     public async Task CreateAsync_then_GetByIdAsync_roundtrips()
     {
         using var scope = _fixture.Services.CreateScope();

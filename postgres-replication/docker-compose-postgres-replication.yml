@@ -1,10 +1,11 @@
+name: postgres-official-replication
+
 networks:
   job-scheduler-net:
     driver: bridge
 
 volumes:
   primary-data:
-  standby-data:
   replica1-data:
   replica2-data:
 
@@ -30,27 +31,6 @@ services:
     networks:
       - job-scheduler-net
 
-  postgres-standby:
-    image: postgres:15
-    container_name: postgres-standby
-    environment:
-      POSTGRES_USER: job_admin
-      POSTGRES_PASSWORD: StrongP@ssw0rd
-      POSTGRES_DB: job_config_db
-    ports:
-      - "5433:5432"
-    depends_on:
-      - postgres-primary
-    volumes:
-      - standby-data:/var/lib/postgresql/data
-    command: >
-      postgres -c wal_level=replica
-               -c hot_standby=on
-               -c primary_conninfo='host=postgres-primary port=5432 user=replicator password=ReplicaPass123'
-               -c hot_standby_feedback=on
-    networks:
-      - job-scheduler-net
-
   postgres-replica1:
     image: postgres:15
     container_name: postgres-replica1
@@ -64,10 +44,9 @@ services:
       - postgres-primary
     volumes:
       - replica1-data:/var/lib/postgresql/data
-    command: >
-      postgres -c wal_level=replica
-               -c hot_standby=on
-               -c primary_conninfo='host=postgres-primary port=5432 user=replicator password=ReplicaPass123'
+      - ./replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/replica-entrypoint.sh"]
+    command: ["postgres"]
     networks:
       - job-scheduler-net
 
@@ -84,9 +63,8 @@ services:
       - postgres-primary
     volumes:
       - replica2-data:/var/lib/postgresql/data
-    command: >
-      postgres -c wal_level=replica
-               -c hot_standby=on
-               -c primary_conninfo='host=postgres-primary port=5432 user=replicator password=ReplicaPass123'
+      - ./replica-entrypoint.sh:/usr/local/bin/replica-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/replica-entrypoint.sh"]
+    command: ["postgres"]
     networks:
       - job-scheduler-net

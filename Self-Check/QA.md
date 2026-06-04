@@ -414,3 +414,50 @@ Write availability drops if any replica is down (W = N requires all replicas to 
 1. Which replication strategy (leader-follower, multi-leader, or leaderless) typically prioritizes availability over strong consistency?
 
 Leaderless replication (with quorums tuned for availability) and some multi-leader async setups.
+
+
+### 6. Partitioning and sharding
+
+## 1. Partitioning
+
+1. What is data partitioning and why is it important in distributed systems?
+
+Data partitioning means splitting a dataset (usually one logical table or collection) into smaller pieces that can be stored, moved, and queried more independently—either within one database (e.g. PostgreSQL declarative partitions) or across nodes when combined with sharding. In distributed systems it matters because it reduces how much data each node must hold and scan, enables parallelism, improves fault isolation (a partition failure affects less data), and is often a prerequisite for scaling out while keeping growth manageable.
+
+2. How do horizontal and vertical partitioning differ in terms of data organization and use cases?
+
+Horizontal partitioning splits **rows**: the same schema is repeated across partitions (e.g. by range, hash, or tenant), and each partition holds a subset of rows. It is used for scale-out, time-series retention, and isolating hot subsets of data. Vertical partitioning splits **columns** (or groups of columns): different attributes live in different tables or stores (e.g. wide profile JSON in a document store, billing columns in SQL). It is used to reduce row width, match access patterns, or place seldom-used columns on cheaper storage.
+
+3. Compare range-based and hash-based partitioning strategies. When would you choose one over the other?
+
+Range partitioning assigns rows to partitions by contiguous key intervals (e.g. order date by month). It excels at **time-window queries** and **efficient archival** (drop old partitions) but can create **hot partitions** if new data always hits the “latest” range. Hash partitioning maps keys through a hash function into a fixed number of buckets, spreading load more **evenly** when keys are high-cardinality and well distributed; it is weaker when you need **range scans across few partitions** unless the hash key aligns with access patterns. Choose **range** for temporal locality and lifecycle; choose **hash** for write spread and even size when point lookups by that key dominate.
+
+4. What are the benefits of using a hybrid approach that combines partitioning with replication?
+
+Replication provides **read scale** and **high availability** (standbys, failover); partitioning provides **data locality and manageability** within each replica’s dataset. Together, each replica can host the same partition layout so applications keep a simple model while **read replicas** serve historical or reporting traffic, the **primary** handles writes, and **partition maintenance** (detach/drop, vacuum per child) is cheaper than one monolithic table. You also get better use of I/O and cache per partition on each node.
+
+5. In what ways can partitioning improve query performance and scalability?
+
+Partition **pruning** lets the optimizer skip irrelevant child tables when the query predicate matches the partition key, cutting I/O. Smaller indexes and tables per partition speed **builds, backups, and reindexes**. Writes and reads can be **parallelized** across partitions where the engine supports it. Operationally, partitions bound **blast radius** and allow **rolling** data lifecycle policies— all of which improve perceived scalability and steady-state latency under growth.
+
+### 2. Sharding
+
+1. How is sharding defined, and how does it relate to horizontal partitioning?
+
+Sharding is **horizontal partitioning applied across multiple independent database instances** (shards), each owning a disjoint subset of data, with routing logic in the application, proxy, or driver to pick the right shard. Conceptually it is the same “split rows by key” idea as horizontal partitioning, but the physical boundary is **separate servers** with separate connection endpoints, so cross-shard queries and transactions become hard or expensive.
+
+2. What factors should you consider when deciding to shard a database?
+
+Consider **data and traffic size** (working set, QPS, storage), **hot spots** and skew, **latency and SLA** needs, **team maturity** (runbooks, observability), **loss of cross-shard joins and foreign keys**, **resharding** and **rebalancing** cost, **multi-tenant isolation** requirements, and whether **read replicas**, **caching**, **partitioning**, or **vertical scale** are still cheaper than shard complexity.
+
+3. What are the main alternatives to sharding for scaling a database, and when might these alternatives be preferable to implementing sharding?
+
+Alternatives include **vertical scaling** (bigger instance), **read replicas** with read/write split, **caching** (Redis), **connection pooling**, **native table partitioning** on one primary, **CQRS/materialized views**, **archiving cold data**, and moving some workloads to **specialized stores** (e.g. search, analytics). They are preferable when the bottleneck is **reads** not writes, when **data still fits** one primary with headroom, when **strong consistency and simple SQL** matter more than unlimited write scale, or when the organization cannot yet operate multi-shard failure modes safely.
+
+4. What is a "hot shard" problem, and what strategies can mitigate it?
+
+A **hot shard** is one shard receiving disproportionate traffic or data (e.g. a celebrity user or “today’s” time bucket), becoming a bottleneck and SPOF-like despite sharding. Mitigations include **better shard keys** (avoid monotonic-only keys if they skew), **sub-sharding or splitting** hot tenants, **rate limiting and caching** on hot keys, **asynchronous offloading** to queues, **rebalancing** data to new shards, and sometimes **synthetic hashing** or **double hashing** to spread load—combined with monitoring per-shard CPU, lag, and key distribution.
+
+5. How do secondary indexes affect the performance of partitioned databases?
+
+Secondary indexes are typically **created per partition** (or maintained as local structures), so each index is smaller and cheaper to maintain than one global index on a giant heap—but a query that **does not constrain the partition key** may still need to **probe every partition’s index**, multiplying work. Unique constraints must usually **include the partition key** (in systems like PostgreSQL), which shapes schema design. Well-chosen partition keys plus indexes that **prefix the partition key** get the best pruning; “global” secondary access patterns without the partition key can **lose** much of partitioning’s benefit.
