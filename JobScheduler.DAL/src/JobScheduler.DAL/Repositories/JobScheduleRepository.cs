@@ -1,6 +1,7 @@
 using System.Data;
 using Dapper;
 using JobScheduler.DAL.Connection;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.Models;
 using Microsoft.Extensions.Logging;
 
@@ -17,7 +18,11 @@ public class JobScheduleRepository : IJobScheduleRepository
         _logger = logger;
     }
 
-    public async Task<JobSchedule?> GetByIdAsync(Guid scheduleId, Guid? schedulePartitionKey = null)
+    public async Task<JobSchedule?> GetByIdAsync(
+        Guid scheduleId,
+        ConsistencyLevel consistencyLevel,
+        Guid? schedulePartitionKey = null,
+        CancellationToken cancellationToken = default)
     {
         var partitionKey = ResolveSchedulePartitionKey(scheduleId, schedulePartitionKey);
 
@@ -25,8 +30,10 @@ public class JobScheduleRepository : IJobScheduleRepository
             SELECT * FROM job_schedules
             WHERE schedule_id = @SchedulePartitionKey;
             """;
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
-        var row = await connection.QueryFirstOrDefaultAsync<JobSchedule>(sql, new { SchedulePartitionKey = partitionKey });
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
+        var row = await connection.QueryFirstOrDefaultAsync<JobSchedule>(
+                new CommandDefinition(sql, new { SchedulePartitionKey = partitionKey }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
         if (row is null)
         {
             _logger.LogDebug(
@@ -36,7 +43,7 @@ public class JobScheduleRepository : IJobScheduleRepository
             return null;
         }
 
-        var physical = await GetPhysicalPartitionNameAsync(connection, partitionKey).ConfigureAwait(false);
+        var physical = await GetPhysicalPartitionNameAsync(connection, partitionKey, cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(
             "JobSchedule GetById: ScheduleId={ScheduleId}, SchedulePartitionKey={SchedulePartitionKey}, PhysicalPartition={PhysicalPartition}, RowFound=true",
             scheduleId,
@@ -45,7 +52,7 @@ public class JobScheduleRepository : IJobScheduleRepository
         return row;
     }
 
-    public async Task<IEnumerable<JobSchedule>> GetByJobIdAsync(Guid jobId)
+    public async Task<IEnumerable<JobSchedule>> GetByJobIdAsync(Guid jobId, ConsistencyLevel consistencyLevel, CancellationToken cancellationToken = default)
     {
         const string histogramSql = """
             SELECT tableoid::regclass::text AS partition_name, COUNT(*)::bigint AS row_count
@@ -61,9 +68,10 @@ public class JobScheduleRepository : IJobScheduleRepository
             ORDER BY created_at DESC;
             """;
 
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
         var histogram = (await connection
-                .QueryAsync<PartitionHistogramRow>(histogramSql, new { JobId = jobId })
+                .QueryAsync<PartitionHistogramRow>(
+                    new CommandDefinition(histogramSql, new { JobId = jobId }, cancellationToken: cancellationToken))
                 .ConfigureAwait(false))
             .ToList();
 
@@ -76,10 +84,11 @@ public class JobScheduleRepository : IJobScheduleRepository
             jobId,
             summary);
 
-        return await connection.QueryAsync<JobSchedule>(rowsSql, new { JobId = jobId }).ConfigureAwait(false);
+        return await connection.QueryAsync<JobSchedule>(new CommandDefinition(rowsSql, new { JobId = jobId }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<JobSchedule> CreateAsync(JobSchedule schedule)
+    public async Task<JobSchedule> CreateAsync(JobSchedule schedule, CancellationToken cancellationToken = default)
     {
         if (schedule.ScheduleId == Guid.Empty)
             schedule.ScheduleId = Guid.NewGuid();
@@ -101,11 +110,12 @@ public class JobScheduleRepository : IJobScheduleRepository
             RETURNING *;
             """;
 
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
         var parameters = ToWriteParameters(schedule, partitionKey);
-        var created = await connection.QuerySingleAsync<JobSchedule>(sql, parameters).ConfigureAwait(false);
+        var created = await connection.QuerySingleAsync<JobSchedule>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-        var physical = await GetPhysicalPartitionNameAsync(connection, partitionKey).ConfigureAwait(false);
+        var physical = await GetPhysicalPartitionNameAsync(connection, partitionKey, cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(
             "JobSchedule Create: ScheduleId={ScheduleId}, SchedulePartitionKey={SchedulePartitionKey}, PhysicalPartition={PhysicalPartition}",
             created.ScheduleId,
@@ -115,7 +125,7 @@ public class JobScheduleRepository : IJobScheduleRepository
         return created;
     }
 
-    public async Task<JobSchedule> UpdateAsync(JobSchedule schedule, Guid? schedulePartitionKey = null)
+    public async Task<JobSchedule> UpdateAsync(JobSchedule schedule, Guid? schedulePartitionKey = null, CancellationToken cancellationToken = default)
     {
         var partitionKey = ResolveSchedulePartitionKey(schedule.ScheduleId, schedulePartitionKey);
 
@@ -144,11 +154,12 @@ public class JobScheduleRepository : IJobScheduleRepository
             RETURNING *;
             """;
 
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
         var parameters = ToWriteParameters(schedule, partitionKey);
-        var updated = await connection.QuerySingleAsync<JobSchedule>(sql, parameters).ConfigureAwait(false);
+        var updated = await connection.QuerySingleAsync<JobSchedule>(new CommandDefinition(sql, parameters, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-        var physical = await GetPhysicalPartitionNameAsync(connection, partitionKey).ConfigureAwait(false);
+        var physical = await GetPhysicalPartitionNameAsync(connection, partitionKey, cancellationToken).ConfigureAwait(false);
         _logger.LogDebug(
             "JobSchedule Update: ScheduleId={ScheduleId}, SchedulePartitionKey={SchedulePartitionKey}, PhysicalPartition={PhysicalPartition}",
             updated.ScheduleId,
@@ -158,18 +169,19 @@ public class JobScheduleRepository : IJobScheduleRepository
         return updated;
     }
 
-    public async Task<bool> DeleteAsync(Guid scheduleId, Guid? schedulePartitionKey = null)
+    public async Task<bool> DeleteAsync(Guid scheduleId, Guid? schedulePartitionKey = null, CancellationToken cancellationToken = default)
     {
         var partitionKey = ResolveSchedulePartitionKey(scheduleId, schedulePartitionKey);
 
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
-        var physicalBefore = await GetPhysicalPartitionNameAsync(connection, partitionKey).ConfigureAwait(false);
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var physicalBefore = await GetPhysicalPartitionNameAsync(connection, partitionKey, cancellationToken).ConfigureAwait(false);
 
         const string sql = """
             DELETE FROM job_schedules
             WHERE schedule_id = @SchedulePartitionKey;
             """;
-        var rows = await connection.ExecuteAsync(sql, new { SchedulePartitionKey = partitionKey }).ConfigureAwait(false);
+        var rows = await connection.ExecuteAsync(new CommandDefinition(sql, new { SchedulePartitionKey = partitionKey }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
         if (rows > 0)
         {
@@ -205,14 +217,15 @@ public class JobScheduleRepository : IJobScheduleRepository
         return key;
     }
 
-    private static async Task<string?> GetPhysicalPartitionNameAsync(IDbConnection connection, Guid schedulePartitionKey)
+    private static async Task<string?> GetPhysicalPartitionNameAsync(IDbConnection connection, Guid schedulePartitionKey, CancellationToken cancellationToken)
     {
         const string sql = """
             SELECT tableoid::regclass::text
             FROM job_schedules
             WHERE schedule_id = @SchedulePartitionKey;
             """;
-        return await connection.QuerySingleOrDefaultAsync<string?>(sql, new { SchedulePartitionKey = schedulePartitionKey })
+        return await connection.QuerySingleOrDefaultAsync<string?>(
+                new CommandDefinition(sql, new { SchedulePartitionKey = schedulePartitionKey }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
 

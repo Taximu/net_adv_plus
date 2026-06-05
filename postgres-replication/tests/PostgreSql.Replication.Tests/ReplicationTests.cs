@@ -1,6 +1,5 @@
 using System.Globalization;
 using Npgsql;
-using Xunit;
 
 namespace PostgreSql.Replication.Tests;
 

@@ -1,7 +1,9 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using JobScheduler.DAL.Configuration;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.DynamoDB.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobScheduler.DAL.DynamoDB.Repositories;
@@ -10,41 +12,60 @@ public sealed class WorkerNodeRepository : IWorkerNodeRepository
 {
     private readonly IAmazonDynamoDB _db;
     private readonly string _table;
+    private readonly ILogger<WorkerNodeRepository> _logger;
 
-    public WorkerNodeRepository(IDynamoDbContextFactory factory, IOptions<DynamoDbOptions> options)
+    public WorkerNodeRepository(
+        IDynamoDbContextFactory factory,
+        IOptions<DynamoDbOptions> options,
+        ILogger<WorkerNodeRepository> logger)
     {
         _db = factory.CreateClient();
         _table = options.Value.WorkerNodesTableName;
+        _logger = logger;
     }
 
     public async Task PutAsync(WorkerNode node, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("DynamoDB PutItem Table={Table} Operation=RegisterWorker WorkerId={WorkerId}", _table, node.WorkerId);
         await _db.PutItemAsync(new PutItemRequest
         {
             TableName = _table,
             Item = ToItem(node)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<WorkerNode?> GetAsync(string workerId, string registeredAt, CancellationToken cancellationToken = default)
+    public async Task<WorkerNode?> GetAsync(
+        string workerId,
+        string registeredAt,
+        CancellationToken cancellationToken = default,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Strong)
     {
+        var consistentRead = consistencyLevel is ConsistencyLevel.Strong;
+        _logger.LogDebug(
+            "DynamoDB GetItem Table={Table} Operation=ReadWorker WorkerId={WorkerId} ConsistencyLevel={ConsistencyLevel} ConsistentRead={ConsistentRead}",
+            _table,
+            workerId,
+            consistencyLevel,
+            consistentRead);
+
         var response = await _db.GetItemAsync(new GetItemRequest
         {
             TableName = _table,
-            ConsistentRead = true,
+            ConsistentRead = consistentRead,
             Key = Key(workerId, registeredAt)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
 
         return response.Item == null || response.Item.Count == 0 ? null : FromItem(response.Item);
     }
 
     public async Task DeleteAsync(string workerId, string registeredAt, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("DynamoDB DeleteItem Table={Table} Operation=DeleteWorker WorkerId={WorkerId}", _table, workerId);
         await _db.DeleteItemAsync(new DeleteItemRequest
         {
             TableName = _table,
             Key = Key(workerId, registeredAt)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     private static Dictionary<string, AttributeValue> Key(string workerId, string registeredAt) => new()
@@ -53,51 +74,51 @@ public sealed class WorkerNodeRepository : IWorkerNodeRepository
         ["registeredAt"] = new AttributeValue { S = registeredAt }
     };
 
-    private static Dictionary<string, AttributeValue> ToItem(WorkerNode n)
+    private static Dictionary<string, AttributeValue> ToItem(WorkerNode node)
     {
-        var m = new Dictionary<string, AttributeValue>
+        var attributes = new Dictionary<string, AttributeValue>
         {
-            ["workerId"] = new AttributeValue { S = n.WorkerId },
-            ["registeredAt"] = new AttributeValue { S = n.RegisteredAt }
+            ["workerId"] = new AttributeValue { S = node.WorkerId },
+            ["registeredAt"] = new AttributeValue { S = node.RegisteredAt }
         };
 
-        if (!string.IsNullOrEmpty(n.WorkerType))
-            m["workerType"] = new AttributeValue { S = n.WorkerType };
-        if (!string.IsNullOrEmpty(n.InstanceType))
-            m["instanceType"] = new AttributeValue { S = n.InstanceType };
-        if (!string.IsNullOrEmpty(n.IpAddress))
-            m["ipAddress"] = new AttributeValue { S = n.IpAddress };
-        if (!string.IsNullOrEmpty(n.AvailabilityZone))
-            m["availabilityZone"] = new AttributeValue { S = n.AvailabilityZone };
+        if (!string.IsNullOrEmpty(node.WorkerType))
+            attributes["workerType"] = new AttributeValue { S = node.WorkerType };
+        if (!string.IsNullOrEmpty(node.InstanceType))
+            attributes["instanceType"] = new AttributeValue { S = node.InstanceType };
+        if (!string.IsNullOrEmpty(node.IpAddress))
+            attributes["ipAddress"] = new AttributeValue { S = node.IpAddress };
+        if (!string.IsNullOrEmpty(node.AvailabilityZone))
+            attributes["availabilityZone"] = new AttributeValue { S = node.AvailabilityZone };
 
-        m["maxConcurrentJobs"] = new AttributeValue { N = n.MaxConcurrentJobs.ToString() };
-        m["currentJobCount"] = new AttributeValue { N = n.CurrentJobCount.ToString() };
-        m["totalJobsProcessed"] = new AttributeValue { N = n.TotalJobsProcessed.ToString() };
+        attributes["maxConcurrentJobs"] = new AttributeValue { N = node.MaxConcurrentJobs.ToString() };
+        attributes["currentJobCount"] = new AttributeValue { N = node.CurrentJobCount.ToString() };
+        attributes["totalJobsProcessed"] = new AttributeValue { N = node.TotalJobsProcessed.ToString() };
 
-        if (!string.IsNullOrEmpty(n.LastHeartbeat))
-            m["lastHeartbeat"] = new AttributeValue { S = n.LastHeartbeat };
-        if (!string.IsNullOrEmpty(n.Status))
-            m["status"] = new AttributeValue { S = n.Status };
-        if (n.CpuUtilization.HasValue)
-            m["cpuUtilization"] = new AttributeValue { N = n.CpuUtilization.Value.ToString() };
-        if (n.MemoryUtilization.HasValue)
-            m["memoryUtilization"] = new AttributeValue { N = n.MemoryUtilization.Value.ToString() };
+        if (!string.IsNullOrEmpty(node.LastHeartbeat))
+            attributes["lastHeartbeat"] = new AttributeValue { S = node.LastHeartbeat };
+        if (!string.IsNullOrEmpty(node.Status))
+            attributes["status"] = new AttributeValue { S = node.Status };
+        if (node.CpuUtilization.HasValue)
+            attributes["cpuUtilization"] = new AttributeValue { N = node.CpuUtilization.Value.ToString() };
+        if (node.MemoryUtilization.HasValue)
+            attributes["memoryUtilization"] = new AttributeValue { N = node.MemoryUtilization.Value.ToString() };
 
-        if (n.SupportedJobTypes is { Count: > 0 })
-            m["supportedJobTypes"] = new AttributeValue { SS = n.SupportedJobTypes.ToList() };
+        if (node.SupportedJobTypes is { Count: > 0 })
+            attributes["supportedJobTypes"] = new AttributeValue { SS = node.SupportedJobTypes.ToList() };
 
-        if (n.Tags is { Count: > 0 })
+        if (node.Tags is { Count: > 0 })
         {
-            var tm = new Dictionary<string, AttributeValue>();
-            foreach (var kv in n.Tags)
-                tm[kv.Key] = new AttributeValue { S = kv.Value };
-            m["tags"] = new AttributeValue { M = tm };
+            var tagAttributes = new Dictionary<string, AttributeValue>();
+            foreach (var kv in node.Tags)
+                tagAttributes[kv.Key] = new AttributeValue { S = kv.Value };
+            attributes["tags"] = new AttributeValue { M = tagAttributes };
         }
 
-        if (!string.IsNullOrEmpty(n.LastUpdatedAt))
-            m["lastUpdatedAt"] = new AttributeValue { S = n.LastUpdatedAt };
+        if (!string.IsNullOrEmpty(node.LastUpdatedAt))
+            attributes["lastUpdatedAt"] = new AttributeValue { S = node.LastUpdatedAt };
 
-        return m;
+        return attributes;
     }
 
     private static WorkerNode FromItem(Dictionary<string, AttributeValue> a)

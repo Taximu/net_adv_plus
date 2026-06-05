@@ -1,9 +1,6 @@
-using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using JobScheduler.DAL.DynamoDB;
 using Microsoft.Extensions.DependencyInjection;
-using System.Linq;
-using Xunit;
 
 namespace JobScheduler.DAL.DynamoDb.Tests;
 

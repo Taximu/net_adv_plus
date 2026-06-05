@@ -1,5 +1,6 @@
 ﻿using Dapper;
 using JobScheduler.DAL.Connection;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.Models;
 
 namespace JobScheduler.DAL.Repositories;
@@ -13,7 +14,7 @@ public class JobDefinitionRepository : IJobDefinitionRepository
         _connectionFactory = connectionFactory;
     }
 
-    public async Task<JobDefinition> CreateAsync(JobDefinition job)
+    public async Task<JobDefinition> CreateAsync(JobDefinition job, CancellationToken cancellationToken = default)
     {
         const string sql = @"
             INSERT INTO job_definitions (
@@ -31,18 +32,21 @@ public class JobDefinitionRepository : IJobDefinitionRepository
             )
             RETURNING *;";
 
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
-        return await connection.QuerySingleAsync<JobDefinition>(sql, job);
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
+        return await connection.QuerySingleAsync<JobDefinition>(new CommandDefinition(sql, job, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<JobDefinition?> GetByIdAsync(Guid jobId)
+    public async Task<JobDefinition?> GetByIdAsync(Guid jobId, ConsistencyLevel consistencyLevel, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT * FROM job_definitions WHERE job_id = @JobId";
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
-        return await connection.QueryFirstOrDefaultAsync<JobDefinition>(sql, new { JobId = jobId });
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
+        return await connection.QueryFirstOrDefaultAsync<JobDefinition>(
+                new CommandDefinition(sql, new { JobId = jobId }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<JobDefinition> UpdateAsync(JobDefinition job)
+    public async Task<JobDefinition> UpdateAsync(JobDefinition job, CancellationToken cancellationToken = default)
     {
         const string sql = @"
             UPDATE job_definitions SET
@@ -54,54 +58,63 @@ public class JobDefinitionRepository : IJobDefinitionRepository
             WHERE job_id = @JobId
             RETURNING *;";
 
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
-        return await connection.QuerySingleAsync<JobDefinition>(sql, job);
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
+        return await connection.QuerySingleAsync<JobDefinition>(new CommandDefinition(sql, job, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<bool> DeleteAsync(Guid jobId)
+    public async Task<bool> DeleteAsync(Guid jobId, CancellationToken cancellationToken = default)
     {
         const string sql = @"DELETE FROM job_definitions WHERE job_id = @JobId";
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
-        var rows = await connection.ExecuteAsync(sql, new { JobId = jobId });
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
+        var rows = await connection.ExecuteAsync(new CommandDefinition(sql, new { JobId = jobId }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
         return rows > 0;
     }
 
-    public async Task<JobDefinition> UpdateStatusAsync(Guid jobId, string status, string updatedBy)
+    public async Task<JobDefinition> UpdateStatusAsync(Guid jobId, string status, string updatedBy, CancellationToken cancellationToken = default)
     {
         const string sql = @"
             UPDATE job_definitions SET status = @Status, updated_by = @UpdatedBy, updated_at = CURRENT_TIMESTAMP
             WHERE job_id = @JobId
             RETURNING *;";
 
-        using var connection = await _connectionFactory.GetWriteConnectionAsync();
-        return await connection.QuerySingleAsync<JobDefinition>(sql, new { JobId = jobId, Status = status, UpdatedBy = updatedBy });
+        using var connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
+        return await connection.QuerySingleAsync<JobDefinition>(
+                new CommandDefinition(sql, new { JobId = jobId, Status = status, UpdatedBy = updatedBy }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<IEnumerable<JobDefinition>> GetByUserIdAsync(Guid userId)
+    public async Task<IEnumerable<JobDefinition>> GetByUserIdAsync(Guid userId, ConsistencyLevel consistencyLevel, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT * FROM job_definitions WHERE user_id = @UserId ORDER BY created_at DESC";
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
-        return await connection.QueryAsync<JobDefinition>(sql, new { UserId = userId });
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
+        return await connection.QueryAsync<JobDefinition>(new CommandDefinition(sql, new { UserId = userId }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<IEnumerable<JobDefinition>> GetByStatusAsync(string status)
+    public async Task<IEnumerable<JobDefinition>> GetByStatusAsync(string status, ConsistencyLevel consistencyLevel, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT * FROM job_definitions WHERE status = @Status ORDER BY created_at DESC";
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
-        return await connection.QueryAsync<JobDefinition>(sql, new { Status = status });
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
+        return await connection.QueryAsync<JobDefinition>(new CommandDefinition(sql, new { Status = status }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<IEnumerable<JobDefinition>> GetActiveJobsAsync()
+    public async Task<IEnumerable<JobDefinition>> GetActiveJobsAsync(ConsistencyLevel consistencyLevel, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT * FROM job_definitions WHERE status = 'active' ORDER BY created_at DESC";
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
-        return await connection.QueryAsync<JobDefinition>(sql);
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
+        return await connection.QueryAsync<JobDefinition>(new CommandDefinition(sql, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    public async Task<bool> ExistsByNameAsync(Guid userId, string name)
+    public async Task<bool> ExistsByNameAsync(Guid userId, string name, ConsistencyLevel consistencyLevel, CancellationToken cancellationToken = default)
     {
         const string sql = @"SELECT EXISTS (SELECT 1 FROM job_definitions WHERE user_id = @UserId AND name = @Name)";
-        using var connection = await _connectionFactory.GetReadConnectionAsync();
-        return await connection.QuerySingleAsync<bool>(sql, new { UserId = userId, Name = name });
+        using var connection = await _connectionFactory.GetReadConnectionAsync(consistencyLevel, cancellationToken).ConfigureAwait(false);
+        return await connection.QuerySingleAsync<bool>(
+                new CommandDefinition(sql, new { UserId = userId, Name = name }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 }

@@ -1,5 +1,3 @@
-using Xunit;
-
 namespace JobScheduler.DAL.DynamoDb.Tests;
 
 [CollectionDefinition("DynamoDbDal", DisableParallelization = true)]

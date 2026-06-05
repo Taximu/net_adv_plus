@@ -1,6 +1,5 @@
 using System.Data;
 using System.Globalization;
-using System.Threading;
 using Dapper;
 
 namespace JobScheduler.DAL;

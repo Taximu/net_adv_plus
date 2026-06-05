@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.Models;
 using JobScheduler.DAL.Repositories;
 using Microsoft.Extensions.DependencyInjection;
@@ -71,7 +72,7 @@ public sealed class JobScheduleRepositoryPartitionLogTests
         try
         {
             _fixture.JobScheduleLogCapture.Clear();
-            _ = await repo.GetByIdAsync(created.ScheduleId);
+            _ = await repo.GetByIdAsync(created.ScheduleId, ConsistencyLevel.Eventual);
             var logs = string.Join(Environment.NewLine, _fixture.JobScheduleLogCapture.Snapshot());
             Assert.Contains("JobSchedule GetById:", logs);
             Assert.Contains("RowFound=true", logs);
@@ -106,7 +107,7 @@ public sealed class JobScheduleRepositoryPartitionLogTests
         try
         {
             _fixture.JobScheduleLogCapture.Clear();
-            _ = await repo.GetByJobIdAsync(_fixture.SeedJobId);
+            _ = await repo.GetByJobIdAsync(_fixture.SeedJobId, ConsistencyLevel.Eventual);
             var logs = string.Join(Environment.NewLine, _fixture.JobScheduleLogCapture.Snapshot());
             Assert.Contains("JobSchedule GetByJobId:", logs);
             Assert.Contains("RowsPerPhysicalPartition=", logs);

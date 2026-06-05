@@ -16,10 +16,13 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="..\..\docs\partitioning-strategy.md" />
+    <None Include="..\..\docs\consistency-requirements.md" />
+    <None Include="..\..\docs\consistency-integration-test-execution-log.md" />
   </ItemGroup>
 
 </Project>

@@ -161,7 +161,7 @@ No application connection-string change is required: the DAL still targets one d
 
 `IJobScheduleRepository` / `JobScheduleRepository`:
 
-- **Partition key** for HASH partitioning is **`schedule_id`**. Optional parameters `schedulePartitionKey` on **GetById**, **Update**, and **Delete** must equal the row’s `schedule_id` when supplied; they bind explicitly in SQL as `@SchedulePartitionKey` so the predicate matches the partition key column.
+- **Partition key** for HASH partitioning is **`schedule_id`**. Optional parameters `schedulePartitionKey` on **GetById**, **Update**, and **Delete** must equal the row’s `schedule_id` when supplied; they bind explicitly in SQL as `@SchedulePartitionKey` so the predicate matches the partition key column. **GetById** / **GetByJobId** also take **`ConsistencyLevel`** for read routing (see **`consistency-requirements.md`**).
 - **`GetByJobIdAsync`** still filters by `job_id` (not the HASH key); **Debug** logs include a **per–physical-partition row count** histogram for that query.
 - After **Create**, **Update**, **GetById** (hit), and **Delete**, **Debug** logs include **`PhysicalPartition`** (PostgreSQL `tableoid::regclass`, e.g. `job_schedules_p2`). Enable **Debug** logging for category `JobScheduler.DAL.Repositories.JobScheduleRepository` (or raise minimum level) to see these entries.
 - **Integration tests:** `JobScheduler.DAL.Postgres.Tests` → **`JobScheduleRepositoryPartitionLogTests`** captures those lines via **`ListCapturingLoggerProvider`** and asserts **`PhysicalPartition=job_schedules_p[0-3]`** and **GetByJobId** histogram markers (`dotnet test` on the Postgres test project).

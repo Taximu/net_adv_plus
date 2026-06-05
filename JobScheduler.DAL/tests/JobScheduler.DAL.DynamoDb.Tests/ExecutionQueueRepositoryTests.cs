@@ -1,7 +1,6 @@
 using JobScheduler.DAL.DynamoDB.Models;
 using JobScheduler.DAL.DynamoDB.Repositories;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 
 namespace JobScheduler.DAL.DynamoDb.Tests;
 
@@ -86,7 +85,7 @@ public class ExecutionQueueRepositoryTests
         try
         {
             await repo.PutAsync(item, ct);
-            var pending = await repo.QueryByQueueStatusAsync("pending", limit: 500, ct);
+            var pending = await repo.QueryByQueueStatusAsync("pending", limit: 500, cancellationToken: ct);
             Assert.Contains(pending, x => x.QueueId == id && x.ScheduledFor == scheduled);
         }
         finally
@@ -171,7 +170,7 @@ public class ExecutionQueueRepositoryTests
             var at = DateTime.UtcNow.ToString("O");
             await repo.TryClaimAsync(id, scheduled, workerId, at, ct);
 
-            var list = await repo.QueryByAssignedWorkerAsync(workerId, limit: 100, ct);
+            var list = await repo.QueryByAssignedWorkerAsync(workerId, limit: 100, cancellationToken: ct);
             Assert.Contains(list, x => x.QueueId == id);
         }
         finally

@@ -1,7 +1,9 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using JobScheduler.DAL.Configuration;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.DynamoDB.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobScheduler.DAL.DynamoDB.Repositories;
@@ -10,38 +12,62 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
 {
     private readonly IAmazonDynamoDB _db;
     private readonly string _table;
+    private readonly ILogger<ExecutionQueueRepository> _logger;
     private const string PendingIndex = "PendingExecutionsIndex";
     private const string WorkerAssignmentsIndex = "WorkerAssignmentsIndex";
 
-    public ExecutionQueueRepository(IDynamoDbContextFactory factory, IOptions<DynamoDbOptions> options)
+    public ExecutionQueueRepository(
+        IDynamoDbContextFactory factory,
+        IOptions<DynamoDbOptions> options,
+        ILogger<ExecutionQueueRepository> logger)
     {
         _db = factory.CreateClient();
         _table = options.Value.ExecutionQueueTableName;
+        _logger = logger;
     }
 
     public async Task PutAsync(ExecutionQueueItem item, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("DynamoDB PutItem Table={Table} Operation=Enqueue QueueId={QueueId} ScheduledFor={ScheduledFor}", _table, item.QueueId, item.ScheduledFor);
         await _db.PutItemAsync(new PutItemRequest
         {
             TableName = _table,
             Item = ToItem(item)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<ExecutionQueueItem?> GetAsync(string queueId, string scheduledFor, CancellationToken cancellationToken = default)
+    public async Task<ExecutionQueueItem?> GetAsync(
+        string queueId,
+        string scheduledFor,
+        CancellationToken cancellationToken = default,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Strong)
     {
+        var consistentRead = MapConsistentRead(consistencyLevel);
+        _logger.LogDebug(
+            "DynamoDB GetItem Table={Table} Operation=Read QueueId={QueueId} ConsistencyLevel={ConsistencyLevel} ConsistentRead={ConsistentRead}",
+            _table,
+            queueId,
+            consistencyLevel,
+            consistentRead);
+
         var response = await _db.GetItemAsync(new GetItemRequest
         {
             TableName = _table,
-            ConsistentRead = true,
+            ConsistentRead = consistentRead,
             Key = Key(queueId, scheduledFor)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
 
         return response.Item == null || response.Item.Count == 0 ? null : FromItem(response.Item);
     }
 
-    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByQueueStatusAsync(string queueStatus, int? limit, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByQueueStatusAsync(
+        string queueStatus,
+        int? limit,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
+        CancellationToken cancellationToken = default)
     {
+        LogGsiQueryConsistencyDebug(PendingIndex, "PollPending", consistencyLevel);
+
         var max = limit ?? 100;
         var list = new List<ExecutionQueueItem>();
         Dictionary<string, AttributeValue>? startKey = null;
@@ -60,7 +86,7 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
                 ExclusiveStartKey = startKey
             };
 
-            var page = await _db.QueryAsync(req, cancellationToken);
+            var page = await _db.QueryAsync(req, cancellationToken).ConfigureAwait(false);
             foreach (var item in page.Items)
             {
                 list.Add(FromItem(item));
@@ -77,8 +103,14 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
         return list;
     }
 
-    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByAssignedWorkerAsync(string assignedWorkerId, int? limit, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByAssignedWorkerAsync(
+        string assignedWorkerId,
+        int? limit,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
+        CancellationToken cancellationToken = default)
     {
+        LogGsiQueryConsistencyDebug(WorkerAssignmentsIndex, "ListByWorker", consistencyLevel);
+
         var max = limit ?? 100;
         var list = new List<ExecutionQueueItem>();
         Dictionary<string, AttributeValue>? startKey = null;
@@ -97,7 +129,7 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
                 ExclusiveStartKey = startKey
             };
 
-            var page = await _db.QueryAsync(req, cancellationToken);
+            var page = await _db.QueryAsync(req, cancellationToken).ConfigureAwait(false);
             foreach (var item in page.Items)
             {
                 list.Add(FromItem(item));
@@ -116,6 +148,11 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
 
     public async Task<bool> TryClaimAsync(string queueId, string scheduledFor, string workerId, string assignedAtIso, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug(
+            "DynamoDB UpdateItem Table={Table} Operation=TryClaim QueueId={QueueId} WorkerId={WorkerId} (conditional: pending→assigned)",
+            _table,
+            queueId,
+            workerId);
         try
         {
             await _db.UpdateItemAsync(new UpdateItemRequest
@@ -131,7 +168,7 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
                     [":ats"] = new AttributeValue { S = assignedAtIso },
                     [":pend"] = new AttributeValue { S = "pending" }
                 }
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
             return true;
         }
         catch (ConditionalCheckFailedException)
@@ -142,12 +179,38 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
 
     public async Task DeleteAsync(string queueId, string scheduledFor, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug("DynamoDB DeleteItem Table={Table} Operation=Delete QueueId={QueueId}", _table, queueId);
         await _db.DeleteItemAsync(new DeleteItemRequest
         {
             TableName = _table,
             Key = Key(queueId, scheduledFor)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
+
+    private void LogGsiQueryConsistencyDebug(string indexName, string operation, ConsistencyLevel consistencyLevel)
+    {
+        if (consistencyLevel is ConsistencyLevel.Strong)
+        {
+            _logger.LogDebug(
+                "DynamoDB Query Table={Table} Index={Index} Operation={Operation} ConsistencyLevel={ConsistencyLevel}: GSI does not support ConsistentRead; using eventually consistent query",
+                _table,
+                indexName,
+                operation,
+                consistencyLevel);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "DynamoDB Query Table={Table} Index={Index} Operation={Operation} ConsistencyLevel={ConsistencyLevel}",
+                _table,
+                indexName,
+                operation,
+                consistencyLevel);
+        }
+    }
+
+    private static bool MapConsistentRead(ConsistencyLevel level) =>
+        level is ConsistencyLevel.Strong;
 
     private static Dictionary<string, AttributeValue> Key(string queueId, string scheduledFor) => new()
     {

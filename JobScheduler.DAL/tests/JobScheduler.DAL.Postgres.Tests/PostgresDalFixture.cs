@@ -1,5 +1,4 @@
 using Dapper;
-using JobScheduler.DAL;
 using JobScheduler.DAL.Configuration;
 using JobScheduler.DAL.Connection;
 using JobScheduler.DAL.Repositories;
@@ -7,7 +6,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
-using Xunit;
 
 namespace JobScheduler.DAL.Postgres.Tests;
 
