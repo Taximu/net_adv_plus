@@ -25,10 +25,10 @@ public class JobDefinitionRepository : IJobDefinitionRepository
                 tags, metadata, created_by
             ) VALUES (
                 @JobId, @UserId, @Name, @Description, @JobType, @Category,
-                @ApiEndpoint, @HttpMethod, @RequestHeaders, @RequestBodyTemplate,
-                @AuthType, @AuthConfig, @TimeoutSeconds, @MaxRetries,
+                @ApiEndpoint, @HttpMethod, NULLIF(@RequestHeaders, '')::jsonb, @RequestBodyTemplate,
+                @AuthType, NULLIF(@AuthConfig, '')::jsonb, @TimeoutSeconds, @MaxRetries,
                 @RetryBackoffMultiplier, @RetryableStatusCodes, @Status,
-                @Tags, @Metadata, @CreatedBy
+                @Tags, NULLIF(@Metadata, '')::jsonb, @CreatedBy
             )
             RETURNING *;";
 
@@ -51,10 +51,10 @@ public class JobDefinitionRepository : IJobDefinitionRepository
         const string sql = @"
             UPDATE job_definitions SET
                 user_id = @UserId, name = @Name, description = @Description, job_type = @JobType, category = @Category,
-                api_endpoint = @ApiEndpoint, http_method = @HttpMethod, request_headers = @RequestHeaders, request_body_template = @RequestBodyTemplate,
-                auth_type = @AuthType, auth_config = @AuthConfig, timeout_seconds = @TimeoutSeconds, max_retries = @MaxRetries,
+                api_endpoint = @ApiEndpoint, http_method = @HttpMethod, request_headers = NULLIF(@RequestHeaders, '')::jsonb, request_body_template = @RequestBodyTemplate,
+                auth_type = @AuthType, auth_config = NULLIF(@AuthConfig, '')::jsonb, timeout_seconds = @TimeoutSeconds, max_retries = @MaxRetries,
                 retry_backoff_multiplier = @RetryBackoffMultiplier, retryable_status_codes = @RetryableStatusCodes, status = @Status,
-                tags = @Tags, metadata = @Metadata, updated_by = @UpdatedBy
+                tags = @Tags, metadata = NULLIF(@Metadata, '')::jsonb, updated_by = @UpdatedBy
             WHERE job_id = @JobId
             RETURNING *;";
 

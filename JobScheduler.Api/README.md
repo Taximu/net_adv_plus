@@ -8,6 +8,8 @@ Minimal ASP.NET Core **presentation** host for **`JobScheduler.BL`**. Endpoints 
 dotnet run --project JobScheduler.Api/JobScheduler.Api.csproj
 ```
 
+Then open **Swagger UI**: `http://localhost:5088/swagger` (OpenAPI JSON: `/swagger/v1/swagger.json`). Try each operation from the UI to demo request/response bodies.
+
 **PostgreSQL:** `Database` must match your primary + replicas; **`user_id`** values must exist in `users` (FK on `job_definitions`).
 
 **DynamoDB (UC 2.1):** set `DynamoDB:ServiceUrl` for local (e.g. `http://localhost:8000`) and ensure tables exist per `JobScheduler.DAL` setup scripts.
@@ -27,4 +29,4 @@ dotnet run --project JobScheduler.Api/JobScheduler.Api.csproj
 - `GET /api/internal/execution/queue/item?queueId=...&scheduledFor=...` — **strongly consistent** `GetItem` for one row.
 - `POST /api/internal/execution/queue/items` — enqueue body as **`ExecutionQueueItem`** JSON (**201 Created** + `Location` query URL).
 
-Sample log output: **[`../JobScheduler.DAL/docs/consistency-demo-logs.md`](../JobScheduler.DAL/docs/consistency-demo-logs.md)**.
+Sample log output (grep **`UC2.1`** for DynamoDB UC 2.1 lines, **`Postgres`** factory events for UC 1.1): **[`../JobScheduler.DAL/docs/consistency-demo-logs.md`](../JobScheduler.DAL/docs/consistency-demo-logs.md)**.

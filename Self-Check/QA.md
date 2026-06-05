@@ -461,3 +461,69 @@ A **hot shard** is one shard receiving disproportionate traffic or data (e.g. a 
 5. How do secondary indexes affect the performance of partitioned databases?
 
 Secondary indexes are typically **created per partition** (or maintained as local structures), so each index is smaller and cheaper to maintain than one global index on a giant heap—but a query that **does not constrain the partition key** may still need to **probe every partition’s index**, multiplying work. Unique constraints must usually **include the partition key** (in systems like PostgreSQL), which shapes schema design. Well-chosen partition keys plus indexes that **prefix the partition key** get the best pruning; “global” secondary access patterns without the partition key can **lose** much of partitioning’s benefit.
+
+## Module 5 — Consistency models, linearizability, consensus, and distributed transactions
+
+### 1. Consistency models
+
+1. What are the trade-offs between strong and weak consistency in distributed systems?
+
+**Strong consistency** (in the sense of “reads reflect latest committed writes” for the chosen scope) simplifies application reasoning and avoids stale decisions, but usually costs **higher latency** (coordination, leader/replica waits), **lower write/read throughput** on the critical path, and **worse availability** under partitions or slow nodes—you may refuse or delay operations rather than serve possibly stale data. **Weak consistency** improves **latency, availability, and horizontal read scale** (e.g. replicas, caches), but clients may see **stale values**, **ordering anomalies**, and **conflicts** that must be handled in the app (merge rules, retries, user messaging, idempotency).
+
+2. What is causal consistency, and how does it differ from eventual consistency?
+
+**Causal consistency** guarantees that if operation B is causally dependent on A (e.g. B reads a value A wrote, or B is issued after observing A’s effect), every node orders A before B consistently; unrelated concurrent operations may still be seen in different orders on different replicas. **Eventual consistency** only promises that if writes stop, replicas **eventually converge** to the same state; it does **not** require preserving causal order between related operations unless the system adds extra mechanisms (vector clocks, explicit causal metadata). So causal is strictly stronger than plain eventual for “related” operations, but weaker than linearizability for all operations globally.
+
+3. Which consistency model ensures that any read returns the result of the most recent write across the system (i.e., no stale data)?
+
+**Linearizability** (single-copy semantics with a real-time global order on overlapping operations) matches the informal “every read sees the latest write” property for individual objects/operations in the usual textbook sense. For **transactions** touching many objects, **strict serializability** (serializable execution that also respects real-time ordering) is the analogous “strongest” database-style guarantee. In practice people also say **strong** or **atomic** consistency when they mean “no stale reads on the path we care about,” but the precise formal answer for “no stale” globally ordered reads/writes is **linearizability** (per object) / **strict serializability** (transactions).
+
+4. Which consistency model provides only eventual convergence of replicas without guaranteeing immediacy of writes on reads?
+
+**Eventual consistency**: replicas may diverge temporarily; given quiescence and delivery of updates, they become equal. Reads **before** convergence may return **any** replica’s value—there is no guarantee that a read immediately after a write observes that write unless extra guarantees (e.g. read-your-writes, quorum reads, or strong consistency) are added.
+
+5. What is the Read-Your-Writes (RYOW) session guarantee, and in what scenarios is it essential?
+
+**Read-your-writes** means that after a client performs a write, its **own subsequent reads** in the same session observe that write (or later updates), even if the store is only **eventually consistent** for other clients. It is essential for **interactive UIs** (save then refresh, multi-step wizards), **after POST redirect**, **session-scoped caches**, and **mobile offline sync** where the user must trust their latest edits before global propagation; it is weaker than full strong consistency because other users may still see old data until replication completes.
+
+### 2. Linearizability and serializability
+
+1. What is the difference between linearizability and serializability?
+
+**Linearizability** is a **correctness condition for concurrent operations on a shared object** (often a register or API): every operation appears to happen at a single instant between its start and end time, consistent with a sequential specification and **real-time order** of non-overlapping ops. **Serializability** is a property of **transactions** over many objects: the outcome is equivalent to **some** serial order of transactions, but that order need **not** match wall-clock time—two transactions can both “appear” to complete before the other in real time as long as their reads/writes don’t forbid a serial reordering. So linearizability is about **single-object atomicity + real-time ordering**; serializability is about **multi-object transactional isolation** without necessarily pinning operations to real-time instants.
+
+### 3. Consensus algorithms
+
+1. What is consensus in distributed systems, and why is it important for high-load applications?
+
+**Consensus** is a group of processes agreeing on **one value** (or a log of commands) despite crashes and **asynchronous networks**, so that decided values are **valid**, **agreed**, and **termination** properties hold under the algorithm’s fault model. High-load systems still need small but critical agreed facts: **leader identity**, **configuration**, **membership**, **work ownership**, **distributed locks**, or **command ordering** in a replicated log—without consensus, split-brain, duplicate processing, or lost updates dominate at scale.
+
+2. What are the main challenges in achieving consensus in a distributed system?
+
+**Network partitions** and **message loss/delay** (FLP: no deterministic consensus in fully async crash-stop model without timeouts); **failures** of nodes during protocol; **performance** (extra rounds, persistence); **operational complexity** (bootstrap, reconfiguration); and in adversarial settings **Byzantine** faults. Practical systems use **timeouts**, **randomization**, or **partial synchrony** assumptions and **leader-based** protocols to make consensus implementable.
+
+3. What is a quorum in distributed consensus, and why is the R+W>N formula important?
+
+A **quorum** is a **minimal subset of replicas** whose participation is required for an operation to be considered successful (e.g. **W** replicas for write, **R** for read out of **N** total). **R + W > N** ensures that any read quorum and any write quorum **intersect in at least one replica**, so a reader can observe a value from a replica that participated in the latest write (under the algorithm’s rules)—tuning R,W trades **read vs write cost** and **staleness vs durability**.
+
+4. What is the Raft consensus algorithm, and why was it developed as an alternative to Paxos?
+
+**Raft** is a **leader-based** replicated log algorithm: **leader election**, **log replication** (AppendEntries), and **safety** rules so committed entries are not lost across terms. It was developed to be **easier to understand and implement correctly** than classical **Paxos**, which is notoriously subtle (multi-Paxos, roles, edge cases) while providing similar crash-fault tolerance for replicated state machines in production systems.
+
+### 4. Distributed transactions
+
+1. What is a distributed transaction, and why do such transactions require special protocols?
+
+A **distributed transaction** is a logical unit of work whose **reads and writes span multiple nodes or services** (multiple databases, partitions, or HTTP participants). A single local **BEGIN/COMMIT** cannot atomically commit everyone: partial failure would leave **some commits and some aborts**, breaking atomicity (A in ACID). Special protocols (**2PC**, **Saga**, **Paxos commit**, etc.) coordinate **all-or-nothing** outcomes or **compensating** effects across participants.
+
+2. How does the Two-Phase Commit (2PC) protocol work to achieve atomic commit across multiple nodes? What's the difference with Three-Phase Commit (3PC) protocol?
+
+**2PC**: Phase 1 **Prepare** — coordinator asks all participants to persist work durably and vote **yes/no**; Phase 2 **Commit/Abort** — if all yes, coordinator sends **commit**; otherwise **abort**. Atomicity holds if participants obey the protocol; the weakness is **blocking** if the coordinator fails after prepare (participants hold locks until recovery). **3PC** adds an extra phase (often **pre-commit** with timeout assumptions) so non-faulty participants can **unblock** without indefinite waiting when the coordinator is suspected dead—reducing blocking in some models but adding **complexity**, **extra latency**, and relying on **stricter timing/network** assumptions; it does not fully solve all failure scenarios in practice, which is why many systems prefer **2PC + recovery log** or **alternatives (Saga)** instead.
+
+3. What is the difference between Choreography-based and Orchestration-based Saga implementations?
+
+**Orchestration**: a central **coordinator** service drives each step (calls A, then B, then issues compensations on failure); easy to trace and change centrally, but the orchestrator is a **dependency and scaling hotspot**. **Choreography**: each service reacts to **domain events** and knows its part of the saga (publish/subscribe); **no central brain**, more decoupled, but **global flow is harder to see**, **ordering** and **duplicate events** need careful design, and debugging crosses many handlers.
+
+4. Why is Correlation ID a good practice in distributed transactions, and how does it help with debugging and tracing?
+
+A **correlation ID** is a **stable identifier** attached to the first inbound request and propagated across **logs, messages, and HTTP headers** for every hop in a saga or call chain. It lets operators **join** scattered log lines into **one story**, measure **end-to-end latency**, find **failed branch** of a partial saga, and tie **metrics/traces** together—essential when atomicity is replaced by **compensation** and many services participate asynchronously.

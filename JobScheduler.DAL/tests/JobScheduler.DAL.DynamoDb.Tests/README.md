@@ -4,7 +4,7 @@ These tests call **DynamoDB Local** through the real DAL (`AddDynamoDbDataAccess
 
 ## Default: Testcontainers (recommended for `dotnet test`)
 
-The shared fixture starts **`amazon/dynamodb-local`** via Testcontainers, runs `docker pull` first (so the image exists before create), creates **ExecutionQueue** and **WorkerNodes** (same shape as `setup-dynamodb-local.ps1`), then runs assertions against a random mapped port.
+The shared fixture starts **`amazon/dynamodb-local`** via Testcontainers. An optional **`docker pull`** runs first; if it fails (e.g. Rancher / containerd `lease does not exist`), the fixture **continues** and Testcontainers pulls or uses a cached image. Set **`DAL_TESTCONTAINERS_EXPLICIT_PULL=0`** to skip pre-pull. It creates **ExecutionQueue** and **WorkerNodes** (same shape as `setup-dynamodb-local.ps1`), then runs assertions against a random mapped port.
 
 **Requirements**
 
@@ -31,6 +31,7 @@ dotnet test .\tests\JobScheduler.DAL.DynamoDb.Tests\JobScheduler.DAL.DynamoDb.Te
 
 ## What is verified
 
+- **UC 2.1** — **`Uc21ScheduledExecutionQueueDalTests`**: full execution-queue slice (enqueue → **`GetAsync`(..., `Strong`)** → **`QueryByQueueStatusAsync`(..., `Eventual`)** → claim → strong verify). **`ExecutionQueueRepositoryTests`** uses the same explicit **`ConsistencyLevel`** arguments on every read.
 - List/describe tables and GSIs (`PendingExecutionsIndex`, `WorkerAssignmentsIndex`)
 - `IExecutionQueueRepository`: put/get, query by `queueStatus`, conditional claim, query by worker
 - `IWorkerNodeRepository`: put/get/delete

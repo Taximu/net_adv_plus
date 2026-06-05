@@ -47,10 +47,16 @@ PostgresWriteOpened: ConsistencyLevel=Strong Role=Primary Host=127.0.0.1 Port=32
 ### Example captured lines (shape)
 
 ```text
-DynamoDB GetItem Table=ExecutionQueue Operation=Read QueueId=... ConsistencyLevel=Strong ConsistentRead=True
-DynamoDB GetItem Table=ExecutionQueue Operation=Read QueueId=... ConsistencyLevel=Eventual ConsistentRead=False
-DynamoDB Query Table=ExecutionQueue Index=PendingExecutionsIndex Operation=PollPending ConsistencyLevel=Eventual
+UC2.1 DynamoDB GetItem Table=ExecutionQueue Operation=Read QueueId=... ScheduledFor=... ConsistencyLevel=Strong ConsistentRead=True
+UC2.1 DynamoDB GetItemCompleted Table=ExecutionQueue QueueId=... ScheduledFor=... ConsistencyLevel=Strong ConsistentRead=True ItemFound=True
+UC2.1 DynamoDB GetItem Table=ExecutionQueue Operation=Read QueueId=... ScheduledFor=... ConsistencyLevel=Eventual ConsistentRead=False
+UC2.1 DynamoDB Query Table=ExecutionQueue Index=PendingExecutionsIndex Operation=PollPending ConsistencyLevel=Eventual ConsistentRead=False
+UC2.1 DynamoDB QueryCompleted Table=ExecutionQueue Index=PendingExecutionsIndex Operation=PollPending ConsistencyLevel=Eventual QueueStatusFilter=pending ReturnedCount=... ConsistentRead=False
 ```
+
+## Docker pull / Rancher Desktop
+
+If **`docker pull`** prints **`unable to lease content: lease does not exist`**, the test fixtures **no longer fail on that step**; they continue so Testcontainers can start the database. Set **`DAL_TESTCONTAINERS_EXPLICIT_PULL=0`** to skip the optional pre-pull entirely. If the container still does not start, restart Rancher Desktop / Docker or pull the image manually once (`docker pull postgres:15.1`).
 
 ## Source locations
 

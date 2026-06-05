@@ -4,6 +4,7 @@ using JobScheduler.BL.Services;
 using JobScheduler.DAL.Extensions;
 using JobScheduler.DAL.Models;
 using JobScheduler.DAL.DynamoDB.Models;
+using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,7 +12,28 @@ builder.Services.AddDataAccessLayer(builder.Configuration);
 builder.Services.AddDynamoDbDataAccessLayer(builder.Configuration);
 builder.Services.AddJobSchedulerBusinessLogic();
 
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "Job Scheduler API",
+        Version = "v1",
+        Description =
+            "UC 1.1 — PostgreSQL job catalog. UC 2.1 — DynamoDB execution queue. "
+            + "By coursework design, read/write semantics (replica vs primary, eventual vs strong DynamoDB reads) are fixed per use case inside the business layer — "
+            + "this API does not accept consistency parameters and clients should not need to know them."
+    });
+});
+
 var app = builder.Build();
+
+app.UseSwagger();
+app.UseSwaggerUI(options =>
+{
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Job Scheduler API v1");
+    options.DocumentTitle = "Job Scheduler API";
+});
 
 app.MapGet("/api/users/{userId:guid}/jobs", async (Guid userId, IUserJobsService jobs, CancellationToken ct) =>
     Results.Ok(await jobs.ListMyJobsAsync(userId, ct).ConfigureAwait(false)));

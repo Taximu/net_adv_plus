@@ -17,7 +17,7 @@
 
 **Partitioning / sharding (Module 04_02 follow-on):** strategy, growth assumptions, HASH partitions on `job_schedules`, and verification SQL — [`docs/partitioning-strategy.md`](./docs/partitioning-strategy.md). DDL and seed volume live under [`../postgres-replication/init-scripts/`](../postgres-replication/init-scripts/).
 
-**Prerequisites:** [.NET 10 SDK](https://dotnet.microsoft.com/download) (projects target `net10.0`). Docker Engine is required for Testcontainers-based integration tests.
+**Prerequisites:** [.NET 10 SDK](https://dotnet.microsoft.com/download) (projects target `net10.0`). Docker Engine is required for Testcontainers-based integration tests. If optional `docker pull` fails on your engine (e.g. Rancher Desktop / `lease does not exist`), fixtures continue and Testcontainers still starts containers; set **`DAL_TESTCONTAINERS_EXPLICIT_PULL=0`** to skip the pre-pull step.
 
 ## Registration (host app)
 
@@ -72,10 +72,11 @@ dotnet test .\JobScheduler.DAL\tests\JobScheduler.DAL.DynamoDb.Tests\JobSchedule
 
 ## What the tests verify
 
-### `JobScheduler.DAL.Postgres.Tests` (13 tests)
+### `JobScheduler.DAL.Postgres.Tests` (15 tests)
 
 | Area | What is checked |
 |------|------------------|
+| **UC 1.1 — Create a job** | **`Uc11CreateJobCatalogDalTests`**: **`IJobDefinitionRepository`** — **`ExistsByNameAsync`(..., `Strong`)** before insert, **`CreateAsync`**, **`GetByIdAsync`(..., `Strong`)**, **`GetByUserIdAsync`(..., `Eventual`)**; **`GetActiveJobsAsync`(`Strong`)** includes seeded active job. |
 | **`IJobScheduleRepository.CreateAsync`** | Insert returns a row with a non-empty `schedule_id`; `GetByIdAsync` reads the same cron/name. |
 | **`UpdateAsync`** | Name, priority, and `is_enabled` persist; `GetByIdAsync` reflects updates. |
 | **`DeleteAsync`** | Row removed; second delete returns `false`; `GetByIdAsync` is null. |
@@ -84,10 +85,11 @@ dotnet test .\JobScheduler.DAL\tests\JobScheduler.DAL.DynamoDb.Tests\JobSchedule
 
 **Mechanics:** [Testcontainers.PostgreSql](https://www.nuget.org/packages/Testcontainers.PostgreSql) starts **PostgreSQL 15.1**, applies the same schema as [`../postgres-replication/init-scripts/02-schema.sql`](../postgres-replication/init-scripts/02-schema.sql), seeds one **user** and **job_definition** for FKs. Dapper is configured for **snake_case** columns and **`DateOnly` / `TimeOnly`** (same as `AddDataAccessLayer` at runtime). The fixture registers a **`ListCapturingLoggerProvider`** plus an optional **simple console** logger (filtered to **`JobScheduleRepository`** at **Debug**) so partition lines show in **`dotnet test`** output; set **`DAL_PG_TESTS_SUPPRESS_PARTITION_CONSOLE=1`** to hide them.
 
-### `JobScheduler.DAL.DynamoDb.Tests` (10 tests)
+### `JobScheduler.DAL.DynamoDb.Tests` (11 tests)
 
 | Area | What is checked |
 |------|------------------|
+| **UC 2.1 — Execute at scheduled time** | **`Uc21ScheduledExecutionQueueDalTests`**: enqueue → **`GetAsync`(..., `Strong`)** → **`QueryByQueueStatusAsync`(..., `Eventual`)** → **`TryClaimAsync`** → verify with **`Strong`** read. **`ExecutionQueueRepositoryTests`** exercises the same repository with explicit **`ConsistencyLevel`** on each read path. |
 | **Connectivity / schema** | Local responds; tables **ExecutionQueue** and **WorkerNodes** exist; GSIs **PendingExecutionsIndex** and **WorkerAssignmentsIndex** on `ExecutionQueue`. |
 | **`IExecutionQueueRepository`** | Put/get (strong read); query by `queueStatus`; **conditional claim** (`TryClaimAsync`) and second claim fails; query by assigned worker. |
 | **`IWorkerNodeRepository`** | Put/get/delete roundtrip. |

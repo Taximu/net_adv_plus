@@ -28,23 +28,26 @@ Category: `JobScheduler.DAL.Connection` (logger type `PostgresConnectionFactory`
 
 ## UC 2.1 — DynamoDB (`ExecutionQueueRepository`)
 
-Category: `JobScheduler.DAL.DynamoDB.Repositories` (logger types `ExecutionQueueRepository`, `WorkerNodeRepository`).
+Category: `JobScheduler.DAL.DynamoDB.Repositories` (logger type `ExecutionQueueRepository`). All UC 2.1 execution-queue lines are prefixed with **`UC2.1`** so they are easy to grep alongside PostgreSQL lines.
 
 | Endpoint / flow | Expected log content |
 |-----------------|----------------------|
-| `GET /api/internal/execution/queue/pending` | `DynamoDB Query` … `PendingExecutionsIndex` … **Eventual** (GSI; no `ConsistentRead`) |
-| `GET /api/internal/execution/queue/item?...` | `DynamoDB GetItem` … **Strong** … **ConsistentRead=True** |
-| `POST /api/internal/execution/queue/items` | `DynamoDB PutItem` … **Enqueue** |
+| `GET /api/internal/execution/queue/pending` | `UC2.1 DynamoDB Query` … `PendingExecutionsIndex` … **Eventual** … **`ConsistentRead=False`** (GSI); then **`UC2.1 DynamoDB QueryCompleted`** … `ReturnedCount=…` |
+| `GET /api/internal/execution/queue/item?...` | `UC2.1 DynamoDB GetItem` … **Strong** … **`ScheduledFor=`** … **ConsistentRead=True**; then **`GetItemCompleted`** … `ItemFound=true/false` |
+| `POST /api/internal/execution/queue/items` | `UC2.1 DynamoDB PutItem` … **Enqueue** … `QueueStatus` (write path) |
+| Worker claim (DAL / internal) | `UC2.1 DynamoDB UpdateItem` … **TryClaim** … then **`TryClaimCompleted`** … `Success=true/false` |
 
 ### Example lines
 
 ```text
-[12:02:00 DBG] ExecutionQueueRepository DynamoDB Query Table=ExecutionQueue Index=PendingExecutionsIndex Operation=PollPending ConsistencyLevel=Eventual
-[12:02:01 DBG] ExecutionQueueRepository DynamoDB GetItem Table=ExecutionQueue Operation=Read QueueId=q-1 ConsistencyLevel=Strong ConsistentRead=True
-[12:02:02 DBG] ExecutionQueueRepository DynamoDB PutItem Table=ExecutionQueue Operation=Enqueue QueueId=q-1 ScheduledFor=2026-06-05T12:00:00.0000000Z
+[12:02:00 DBG] ExecutionQueueRepository UC2.1 DynamoDB Query Table=ExecutionQueue Index=PendingExecutionsIndex Operation=PollPending ConsistencyLevel=Eventual ConsistentRead=False
+[12:02:00 DBG] ExecutionQueueRepository UC2.1 DynamoDB QueryCompleted Table=ExecutionQueue Index=PendingExecutionsIndex Operation=PollPending ConsistencyLevel=Eventual QueueStatusFilter=pending ReturnedCount=3 ConsistentRead=False
+[12:02:01 DBG] ExecutionQueueRepository UC2.1 DynamoDB GetItem Table=ExecutionQueue Operation=Read QueueId=q-1 ScheduledFor=2026-06-05T12:00:00.0000000Z ConsistencyLevel=Strong ConsistentRead=True
+[12:02:01 DBG] ExecutionQueueRepository UC2.1 DynamoDB GetItemCompleted Table=ExecutionQueue QueueId=q-1 ScheduledFor=2026-06-05T12:00:00.0000000Z ConsistencyLevel=Strong ConsistentRead=True ItemFound=True
+[12:02:02 DBG] ExecutionQueueRepository UC2.1 DynamoDB PutItem Table=ExecutionQueue Operation=Enqueue QueueId=q-1 ScheduledFor=2026-06-05T12:00:00.0000000Z QueueStatus=pending (write path; no ConsistentRead on PutItem)
 ```
 
-If a caller mistakenly passes **Strong** to a GSI query in tests or future code, you will see an extra **Debug** line explaining that the index remains eventually consistent.
+If a caller mistakenly passes **Strong** to a GSI query in tests or future code, you will see a **Debug** line stating that the GSI has no strong read and the query remains eventually consistent.
 
 ## Prerequisites
 
