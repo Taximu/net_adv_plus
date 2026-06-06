@@ -10,7 +10,7 @@
 - **`PostgresConnectionFactory`** logs **Debug** lines with **Host**, **Port**, **ReplicaIndex**, and **ConsistencyLevel** for each opened connection (see **[`../../docs/consistency-demo-logs.md`](../../docs/consistency-demo-logs.md)**). Set minimum level **Debug** for `JobScheduler.DAL.Connection` in the host to capture them.
 - **`ConsistencyManager`** (in-memory cooldown after writes) supports BL **read-after-write** routing without exposing levels to HTTP APIs.
 - **`job_schedules`** is **HASH-partitioned** by `schedule_id` (4 partitions) on the primary; replicas replay the same layout. See **[`../../docs/partitioning-strategy.md`](../../docs/partitioning-strategy.md)**.
-- **`JobScheduleRepository`** binds **`@SchedulePartitionKey`** on CRUD where the partition key applies, resolves **`tableoid::regclass`** for **Debug** logs (physical child table per operation), and logs a **partition histogram** for **`GetByJobIdAsync`**. `AddDataAccessLayer` registers **`AddLogging()`**, **`AddMemoryCache()`**, and **`ConsistencyManager`** so `ILogger<>` and caching resolve in minimal hosts.
+- **`JobScheduleRepository`** uses **`@ScheduleId`** on CRUD where the HASH key applies, resolves **`tableoid::regclass`** for **Debug** logs (physical child table per operation), and logs a **partition histogram** for **`GetByJobIdAsync`**. `AddDataAccessLayer` registers **`AddLogging()`**, **`AddMemoryCache()`**, and **`ConsistencyManager`** so `ILogger<>` and caching resolve in minimal hosts.
 
 ### Connection Strings
 | Role | Port | Connection String |

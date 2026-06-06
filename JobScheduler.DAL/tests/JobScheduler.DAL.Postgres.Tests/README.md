@@ -7,8 +7,6 @@ Covers **`IJobDefinitionRepository`** (UC 1.1 — create / read job catalog with
 | Test | What it checks |
 |------|----------------|
 | **`Uc11CreateJobCatalogDalTests`** | UC 1.1: **`ExistsByNameAsync`(..., `Strong`)** → **`CreateAsync`** → **`GetByIdAsync`(..., `Strong`)** / **`GetByUserIdAsync`(..., `Eventual`)**; **`GetActiveJobsAsync`(`Strong`)** sees seeded active job. |
-| `GetByIdAsync_throws_when_explicit_partition_key_mismatches_schedule_id` | Optional `schedulePartitionKey` must equal `scheduleId` (HASH key). |
-| `UpdateAsync_throws_when_explicit_partition_key_mismatches_schedule` | Same validation on **Update**. |
 | `CreateAsync_then_GetByIdAsync_roundtrips` | Insert + read by id; cron expression stored. |
 | `CreateAsync_UpdateAsync_persists_changes` | Update name, priority, `is_enabled`; read reflects changes. |
 | `CreateAsync_DeleteAsync_removes_row` | Delete succeeds once; row gone; second delete returns false. |

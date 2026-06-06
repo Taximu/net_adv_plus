@@ -72,7 +72,7 @@ dotnet test .\JobScheduler.DAL\tests\JobScheduler.DAL.DynamoDb.Tests\JobSchedule
 
 ## What the tests verify
 
-### `JobScheduler.DAL.Postgres.Tests` (15 tests)
+### `JobScheduler.DAL.Postgres.Tests` (13 tests)
 
 | Area | What is checked |
 |------|------------------|
