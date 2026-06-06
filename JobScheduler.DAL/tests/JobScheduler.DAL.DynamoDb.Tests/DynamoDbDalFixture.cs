@@ -1,11 +1,10 @@
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using JobScheduler.DAL.Configuration;
 using JobScheduler.DAL.DynamoDB;
 using JobScheduler.DAL.DynamoDB.Repositories;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
+using Microsoft.Extensions.Logging;
 
 namespace JobScheduler.DAL.DynamoDb.Tests;
 
@@ -17,6 +16,9 @@ public sealed class DynamoDbDalFixture : IAsyncLifetime
 {
     private IContainer? _container;
     public ServiceProvider Services { get; private set; } = null!;
+
+    /// <summary>Captured <see cref="ExecutionQueueRepository"/> / <see cref="WorkerNodeRepository"/> debug lines (routing / ConsistentRead).</summary>
+    public MultiCategoryLogCaptureProvider RoutingLogCapture { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -38,6 +40,20 @@ public sealed class DynamoDbDalFixture : IAsyncLifetime
         }
 
         var services = new ServiceCollection();
+        var routingCategories = new[]
+        {
+            typeof(ExecutionQueueRepository).FullName!,
+            typeof(WorkerNodeRepository).FullName!
+        };
+        var routingCapture = new MultiCategoryLogCaptureProvider(routingCategories);
+        services.AddLogging(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Warning);
+            foreach (var c in routingCategories)
+                builder.AddFilter(c, LogLevel.Debug);
+            builder.AddProvider(routingCapture);
+        });
+        RoutingLogCapture = routingCapture;
         services.Configure<DynamoDbOptions>(o =>
         {
             o.ServiceUrl = serviceUrl.Trim();

@@ -1,5 +1,4 @@
 using Dapper;
-using JobScheduler.DAL;
 using JobScheduler.DAL.Configuration;
 using JobScheduler.DAL.Connection;
 using JobScheduler.DAL.Repositories;
@@ -7,13 +6,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
-using Xunit;
 
 namespace JobScheduler.DAL.Postgres.Tests;
 
 /// <summary>
 /// Single-node PostgreSQL (official image) with the same schema as streaming tests; seeds one user + job for FKs.
 /// Read and write use the same connection string (validates repository SQL paths; replication split is covered elsewhere).
+/// Registers <see cref="IJobDefinitionRepository"/> (UC 1.1) and <see cref="IJobScheduleRepository"/> (schedules on that job).
 /// </summary>
 public sealed class PostgresDalFixture : IAsyncLifetime
 {
@@ -28,6 +27,9 @@ public sealed class PostgresDalFixture : IAsyncLifetime
 
     /// <summary>Pre-seeded <c>job_definitions.job_id</c> for schedule FK tests.</summary>
     public Guid SeedJobId { get; private set; }
+
+    /// <summary>Pre-seeded <c>users.user_id</c> matching <see cref="SeedJobId"/> owner (UC 1.1 job creation tests).</summary>
+    public Guid SeedUserId { get; private set; }
 
     public async Task InitializeAsync()
     {
@@ -64,6 +66,7 @@ public sealed class PostgresDalFixture : IAsyncLifetime
 
         SeedJobId = Guid.NewGuid();
         var userId = Guid.NewGuid();
+        SeedUserId = userId;
         await using (var conn = new NpgsqlConnection(writeCs))
         {
             await conn.OpenAsync().ConfigureAwait(false);
@@ -108,6 +111,7 @@ public sealed class PostgresDalFixture : IAsyncLifetime
             o.PostgresReadConnectionStrings = new List<string> { writeCs };
         });
         services.AddSingleton<IDbConnectionFactory, PostgresConnectionFactory>();
+        services.AddScoped<IJobDefinitionRepository, JobDefinitionRepository>();
         services.AddScoped<IJobScheduleRepository, JobScheduleRepository>();
         Services = services.BuildServiceProvider();
     }

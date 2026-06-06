@@ -1,47 +1,94 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using JobScheduler.DAL.Configuration;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.DynamoDB.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobScheduler.DAL.DynamoDB.Repositories;
 
+/// <summary>
+/// DynamoDB execution queue (UC 2.1). Debug logs use prefix <c>UC2.1</c> and structured fields
+/// (<see cref="ConsistencyLevel"/>, <c>ConsistentRead</c>, <c>ScheduledFor</c>, <c>QueryCompleted</c> / <c>TryClaimCompleted</c>)
+/// so operators can correlate API calls with read semantics — see <c>JobScheduler.DAL/docs/consistency-demo-logs.md</c>.
+/// </summary>
 public sealed class ExecutionQueueRepository : IExecutionQueueRepository
 {
     private readonly IAmazonDynamoDB _db;
     private readonly string _table;
+    private readonly ILogger<ExecutionQueueRepository> _logger;
     private const string PendingIndex = "PendingExecutionsIndex";
     private const string WorkerAssignmentsIndex = "WorkerAssignmentsIndex";
 
-    public ExecutionQueueRepository(IDynamoDbContextFactory factory, IOptions<DynamoDbOptions> options)
+    public ExecutionQueueRepository(
+        IDynamoDbContextFactory factory,
+        IOptions<DynamoDbOptions> options,
+        ILogger<ExecutionQueueRepository> logger)
     {
         _db = factory.CreateClient();
         _table = options.Value.ExecutionQueueTableName;
+        _logger = logger;
     }
 
     public async Task PutAsync(ExecutionQueueItem item, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug(
+            "UC2.1 DynamoDB PutItem Table={Table} Operation=Enqueue QueueId={QueueId} ScheduledFor={ScheduledFor} QueueStatus={QueueStatus} (write path; no ConsistentRead on PutItem)",
+            _table,
+            item.QueueId,
+            item.ScheduledFor,
+            item.QueueStatus);
         await _db.PutItemAsync(new PutItemRequest
         {
             TableName = _table,
             Item = ToItem(item)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<ExecutionQueueItem?> GetAsync(string queueId, string scheduledFor, CancellationToken cancellationToken = default)
+    public async Task<ExecutionQueueItem?> GetAsync(
+        string queueId,
+        string scheduledFor,
+        CancellationToken cancellationToken = default,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Strong)
     {
+        var consistentRead = MapConsistentRead(consistencyLevel);
+        _logger.LogDebug(
+            "UC2.1 DynamoDB GetItem Table={Table} Operation=Read QueueId={QueueId} ScheduledFor={ScheduledFor} ConsistencyLevel={ConsistencyLevel} ConsistentRead={ConsistentRead}",
+            _table,
+            queueId,
+            scheduledFor,
+            consistencyLevel,
+            consistentRead);
+
         var response = await _db.GetItemAsync(new GetItemRequest
         {
             TableName = _table,
-            ConsistentRead = true,
+            ConsistentRead = consistentRead,
             Key = Key(queueId, scheduledFor)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
 
-        return response.Item == null || response.Item.Count == 0 ? null : FromItem(response.Item);
+        var found = response.Item != null && response.Item.Count > 0;
+        _logger.LogDebug(
+            "UC2.1 DynamoDB GetItemCompleted Table={Table} QueueId={QueueId} ScheduledFor={ScheduledFor} ConsistencyLevel={ConsistencyLevel} ConsistentRead={ConsistentRead} ItemFound={ItemFound}",
+            _table,
+            queueId,
+            scheduledFor,
+            consistencyLevel,
+            consistentRead,
+            found);
+
+        return found ? FromItem(response.Item!) : null;
     }
 
-    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByQueueStatusAsync(string queueStatus, int? limit, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByQueueStatusAsync(
+        string queueStatus,
+        int? limit,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
+        CancellationToken cancellationToken = default)
     {
+        LogGsiQueryConsistencyDebug(PendingIndex, "PollPending", consistencyLevel);
+
         var max = limit ?? 100;
         var list = new List<ExecutionQueueItem>();
         Dictionary<string, AttributeValue>? startKey = null;
@@ -60,7 +107,7 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
                 ExclusiveStartKey = startKey
             };
 
-            var page = await _db.QueryAsync(req, cancellationToken);
+            var page = await _db.QueryAsync(req, cancellationToken).ConfigureAwait(false);
             foreach (var item in page.Items)
             {
                 list.Add(FromItem(item));
@@ -74,11 +121,25 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
             startKey = page.LastEvaluatedKey is { Count: > 0 } ? page.LastEvaluatedKey : null;
         } while (startKey != null);
 
+        _logger.LogDebug(
+            "UC2.1 DynamoDB QueryCompleted Table={Table} Index={Index} Operation=PollPending ConsistencyLevel={ConsistencyLevel} QueueStatusFilter={QueueStatus} ReturnedCount={ReturnedCount} ConsistentRead=False",
+            _table,
+            PendingIndex,
+            consistencyLevel,
+            queueStatus,
+            list.Count);
+
         return list;
     }
 
-    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByAssignedWorkerAsync(string assignedWorkerId, int? limit, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<ExecutionQueueItem>> QueryByAssignedWorkerAsync(
+        string assignedWorkerId,
+        int? limit,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
+        CancellationToken cancellationToken = default)
     {
+        LogGsiQueryConsistencyDebug(WorkerAssignmentsIndex, "ListByWorker", consistencyLevel);
+
         var max = limit ?? 100;
         var list = new List<ExecutionQueueItem>();
         Dictionary<string, AttributeValue>? startKey = null;
@@ -97,7 +158,7 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
                 ExclusiveStartKey = startKey
             };
 
-            var page = await _db.QueryAsync(req, cancellationToken);
+            var page = await _db.QueryAsync(req, cancellationToken).ConfigureAwait(false);
             foreach (var item in page.Items)
             {
                 list.Add(FromItem(item));
@@ -111,11 +172,25 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
             startKey = page.LastEvaluatedKey is { Count: > 0 } ? page.LastEvaluatedKey : null;
         } while (startKey != null);
 
+        _logger.LogDebug(
+            "UC2.1 DynamoDB QueryCompleted Table={Table} Index={Index} Operation=ListByWorker ConsistencyLevel={ConsistencyLevel} AssignedWorkerId={WorkerId} ReturnedCount={ReturnedCount} ConsistentRead=False",
+            _table,
+            WorkerAssignmentsIndex,
+            consistencyLevel,
+            assignedWorkerId,
+            list.Count);
+
         return list;
     }
 
     public async Task<bool> TryClaimAsync(string queueId, string scheduledFor, string workerId, string assignedAtIso, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug(
+            "UC2.1 DynamoDB UpdateItem Table={Table} Operation=TryClaim QueueId={QueueId} ScheduledFor={ScheduledFor} WorkerId={WorkerId} (conditional: pending to assigned; write path)",
+            _table,
+            queueId,
+            scheduledFor,
+            workerId);
         try
         {
             await _db.UpdateItemAsync(new UpdateItemRequest
@@ -131,23 +206,67 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
                     [":ats"] = new AttributeValue { S = assignedAtIso },
                     [":pend"] = new AttributeValue { S = "pending" }
                 }
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
+            _logger.LogDebug(
+                "UC2.1 DynamoDB TryClaimCompleted Table={Table} QueueId={QueueId} ScheduledFor={ScheduledFor} WorkerId={WorkerId} Success={Success}",
+                _table,
+                queueId,
+                scheduledFor,
+                workerId,
+                true);
             return true;
         }
         catch (ConditionalCheckFailedException)
         {
+            _logger.LogDebug(
+                "UC2.1 DynamoDB TryClaimCompleted Table={Table} QueueId={QueueId} ScheduledFor={ScheduledFor} WorkerId={WorkerId} Success={Success}",
+                _table,
+                queueId,
+                scheduledFor,
+                workerId,
+                false);
             return false;
         }
     }
 
     public async Task DeleteAsync(string queueId, string scheduledFor, CancellationToken cancellationToken = default)
     {
+        _logger.LogDebug(
+            "UC2.1 DynamoDB DeleteItem Table={Table} Operation=Delete QueueId={QueueId} ScheduledFor={ScheduledFor} (write path)",
+            _table,
+            queueId,
+            scheduledFor);
         await _db.DeleteItemAsync(new DeleteItemRequest
         {
             TableName = _table,
             Key = Key(queueId, scheduledFor)
-        }, cancellationToken);
+        }, cancellationToken).ConfigureAwait(false);
     }
+
+    private void LogGsiQueryConsistencyDebug(string indexName, string operation, ConsistencyLevel consistencyLevel)
+    {
+        if (consistencyLevel is ConsistencyLevel.Strong)
+        {
+            _logger.LogDebug(
+                "UC2.1 DynamoDB Query Table={Table} Index={Index} Operation={Operation} ConsistencyLevel={ConsistencyLevel} ConsistentRead=False (GSI has no strong read; query remains eventually consistent)",
+                _table,
+                indexName,
+                operation,
+                consistencyLevel);
+        }
+        else
+        {
+            _logger.LogDebug(
+                "UC2.1 DynamoDB Query Table={Table} Index={Index} Operation={Operation} ConsistencyLevel={ConsistencyLevel} ConsistentRead=False",
+                _table,
+                indexName,
+                operation,
+                consistencyLevel);
+        }
+    }
+
+    private static bool MapConsistentRead(ConsistencyLevel level) =>
+        level is ConsistencyLevel.Strong;
 
     private static Dictionary<string, AttributeValue> Key(string queueId, string scheduledFor) => new()
     {

@@ -2,6 +2,12 @@
   <Folder Name="/JobScheduler.DAL/">
     <Project Path="JobScheduler.DAL/src/JobScheduler.DAL/JobScheduler.DAL.csproj" />
   </Folder>
+  <Folder Name="/JobScheduler.BL/">
+    <Project Path="JobScheduler.BL/JobScheduler.BL.csproj" />
+  </Folder>
+  <Folder Name="/JobScheduler.Api/">
+    <Project Path="JobScheduler.Api/JobScheduler.Api.csproj" />
+  </Folder>
   <Folder Name="/JobScheduler.DAL/tests/DynamoDb/">
     <Project Path="JobScheduler.DAL/tests/JobScheduler.DAL.DynamoDb.Tests/JobScheduler.DAL.DynamoDb.Tests.csproj" />
   </Folder>

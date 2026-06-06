@@ -19,35 +19,38 @@ public class UnitOfWork : IUnitOfWork
         _connectionFactory = connectionFactory;
     }
 
-    public async Task BeginAsync()
+    public async Task BeginAsync(CancellationToken cancellationToken = default)
     {
-        _connection = await _connectionFactory.GetWriteConnectionAsync();
+        _connection = await _connectionFactory.GetWriteConnectionAsync(cancellationToken).ConfigureAwait(false);
         if (_connection is not NpgsqlConnection npg)
             throw new InvalidOperationException("Unit of work requires an Npgsql write connection.");
-        _transaction = await npg.BeginTransactionAsync();
+        _transaction = await npg.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task CommitAsync()
+    public async Task CommitAsync(CancellationToken cancellationToken = default)
     {
         if (_transaction == null) throw new InvalidOperationException("Transaction not started");
-        await _transaction.CommitAsync();
+        await _transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         await DisposeAsync();
     }
 
-    public async Task RollbackAsync()
+    public async Task RollbackAsync(CancellationToken cancellationToken = default)
     {
         if (_transaction == null) throw new InvalidOperationException("Transaction not started");
-        await _transaction.RollbackAsync();
+        await _transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
         await DisposeAsync();
     }
 
     public void Dispose() => DisposeAsync().GetAwaiter().GetResult();
 
-    private async Task DisposeAsync()
+    private Task DisposeAsync()
     {
-        if (_disposed) return;
+        if (_disposed)
+            return Task.CompletedTask;
+
         _transaction?.Dispose();
         _connection?.Dispose();
         _disposed = true;
+        return Task.CompletedTask;
     }
 }

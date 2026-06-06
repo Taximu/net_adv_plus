@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.Connection;
 using JobScheduler.DAL.Repositories;
 using JobScheduler.DAL.UnitOfWork;
@@ -8,7 +8,6 @@ using JobScheduler.DAL.Configuration;
 using JobScheduler.DAL.DynamoDB;
 using JobScheduler.DAL.DynamoDB.Repositories;
 using Dapper;
-using JobScheduler.DAL;
 
 namespace JobScheduler.DAL.Extensions;
 
@@ -21,6 +20,8 @@ public static class ServiceCollectionExtensions
         DapperNpgsqlConfiguration.RegisterDateAndTimeHandlers();
         services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
         services.AddLogging();
+        services.AddMemoryCache();
+        services.AddSingleton<ConsistencyManager>();
         services.AddScoped<IDbConnectionFactory, PostgresConnectionFactory>();
         services.AddScoped<IJobDefinitionRepository, JobDefinitionRepository>();
         services.AddScoped<IJobScheduleRepository, JobScheduleRepository>();
@@ -32,6 +33,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddDynamoDbDataAccessLayer(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<DynamoDbOptions>(configuration.GetSection("DynamoDB"));
+        services.AddLogging();
         services.AddSingleton<IDynamoDbContextFactory, DynamoDbContextFactory>();
         services.AddScoped<IExecutionQueueRepository, ExecutionQueueRepository>();
         services.AddScoped<IWorkerNodeRepository, WorkerNodeRepository>();

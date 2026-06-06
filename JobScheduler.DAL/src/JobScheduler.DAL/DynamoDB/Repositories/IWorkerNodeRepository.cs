@@ -1,3 +1,4 @@
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.DynamoDB.Models;
 
 namespace JobScheduler.DAL.DynamoDB.Repositories;
@@ -9,7 +10,14 @@ public interface IWorkerNodeRepository
 {
     Task PutAsync(WorkerNode node, CancellationToken cancellationToken = default);
 
-    Task<WorkerNode?> GetAsync(string workerId, string registeredAt, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// <see cref="ConsistencyLevel.Strong"/> uses <c>ConsistentRead=true</c>; <see cref="ConsistencyLevel.Eventual"/> uses <c>ConsistentRead=false</c>.
+    /// </summary>
+    Task<WorkerNode?> GetAsync(
+        string workerId,
+        string registeredAt,
+        CancellationToken cancellationToken = default,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Strong);
 
     Task DeleteAsync(string workerId, string registeredAt, CancellationToken cancellationToken = default);
 }

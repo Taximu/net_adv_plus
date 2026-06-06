@@ -7,6 +7,8 @@
 | Path | Purpose |
 |------|---------|
 | [`docs/partitioning-strategy.md`](./docs/partitioning-strategy.md) | **Module 04_02:** partitioning vs sharding decision, growth/patterns, HASH `job_schedules` DDL reference, verification queries. |
+| [`docs/consistency-requirements.md`](./docs/consistency-requirements.md) | Use-case consistency analysis and mapping to `ConsistencyLevel`. |
+| [`docs/consistency-integration-test-execution-log.md`](./docs/consistency-integration-test-execution-log.md) | **Attached execution logs:** how to run routing integration tests and example log shapes (Postgres + DynamoDB). |
 | [`src/JobScheduler.DAL/`](./src/JobScheduler.DAL/README.md) | Library project: connection factory, `DatabaseOptions` / `DynamoDbOptions`, repositories, `UnitOfWork`, DynamoDB Local **Docker Compose** and **setup scripts**. |
 | [`tests/JobScheduler.DAL.Postgres.Tests/`](./tests/JobScheduler.DAL.Postgres.Tests/README.md) | Integration tests for **PostgreSQL** — mainly `IJobScheduleRepository` CRUD. |
 | [`tests/JobScheduler.DAL.DynamoDb.Tests/`](./tests/JobScheduler.DAL.DynamoDb.Tests/README.md) | Integration tests for **DynamoDB Local** — execution queue and worker repositories. |
@@ -15,7 +17,7 @@
 
 **Partitioning / sharding (Module 04_02 follow-on):** strategy, growth assumptions, HASH partitions on `job_schedules`, and verification SQL — [`docs/partitioning-strategy.md`](./docs/partitioning-strategy.md). DDL and seed volume live under [`../postgres-replication/init-scripts/`](../postgres-replication/init-scripts/).
 
-**Prerequisites:** [.NET 10 SDK](https://dotnet.microsoft.com/download) (projects target `net10.0`). Docker Engine is required for Testcontainers-based integration tests.
+**Prerequisites:** [.NET 10 SDK](https://dotnet.microsoft.com/download) (projects target `net10.0`). Docker Engine is required for Testcontainers-based integration tests. If optional `docker pull` fails on your engine (e.g. Rancher Desktop / `lease does not exist`), fixtures continue and Testcontainers still starts containers; set **`DAL_TESTCONTAINERS_EXPLICIT_PULL=0`** to skip the pre-pull step.
 
 ## Registration (host app)
 
@@ -70,25 +72,28 @@ dotnet test .\JobScheduler.DAL\tests\JobScheduler.DAL.DynamoDb.Tests\JobSchedule
 
 ## What the tests verify
 
-### `JobScheduler.DAL.Postgres.Tests` (9 tests)
+### `JobScheduler.DAL.Postgres.Tests` (13 tests)
 
 | Area | What is checked |
 |------|------------------|
+| **UC 1.1 — Create a job** | **`Uc11CreateJobCatalogDalTests`**: **`IJobDefinitionRepository`** — **`ExistsByNameAsync`(..., `Strong`)** before insert, **`CreateAsync`**, **`GetByIdAsync`(..., `Strong`)**, **`GetByUserIdAsync`(..., `Eventual`)**; **`GetActiveJobsAsync`(`Strong`)** includes seeded active job. |
 | **`IJobScheduleRepository.CreateAsync`** | Insert returns a row with a non-empty `schedule_id`; `GetByIdAsync` reads the same cron/name. |
 | **`UpdateAsync`** | Name, priority, and `is_enabled` persist; `GetByIdAsync` reflects updates. |
 | **`DeleteAsync`** | Row removed; second delete returns `false`; `GetByIdAsync` is null. |
 | **`GetByJobIdAsync`** | New schedule appears in the list for the seeded job. |
-| **Partition debug logs** | **`JobScheduleRepositoryPartitionLogTests`**: captured **Debug** lines include **`PhysicalPartition=job_schedules_p[0-3]`** after **Create** / **GetById** (hit), and **`RowsPerPhysicalPartition`** / **`job_schedules_p`** after **GetByJobId** (histogram). Uses **`PostgresDalFixture.JobScheduleLogCapture`**. |
+| **Consistency routing logs** | **`PostgresConsistencyRoutingTests`**: captures **`PostgresConnectionFactory`** **Debug** lines — **Strong** vs **Eventual** (replica **ReplicaIndex** round-robin) vs **Write**. See **[`docs/consistency-integration-test-execution-log.md`](./docs/consistency-integration-test-execution-log.md)**. |
 
 **Mechanics:** [Testcontainers.PostgreSql](https://www.nuget.org/packages/Testcontainers.PostgreSql) starts **PostgreSQL 15.1**, applies the same schema as [`../postgres-replication/init-scripts/02-schema.sql`](../postgres-replication/init-scripts/02-schema.sql), seeds one **user** and **job_definition** for FKs. Dapper is configured for **snake_case** columns and **`DateOnly` / `TimeOnly`** (same as `AddDataAccessLayer` at runtime). The fixture registers a **`ListCapturingLoggerProvider`** plus an optional **simple console** logger (filtered to **`JobScheduleRepository`** at **Debug**) so partition lines show in **`dotnet test`** output; set **`DAL_PG_TESTS_SUPPRESS_PARTITION_CONSOLE=1`** to hide them.
 
-### `JobScheduler.DAL.DynamoDb.Tests` (7 tests)
+### `JobScheduler.DAL.DynamoDb.Tests` (11 tests)
 
 | Area | What is checked |
 |------|------------------|
+| **UC 2.1 — Execute at scheduled time** | **`Uc21ScheduledExecutionQueueDalTests`**: enqueue → **`GetAsync`(..., `Strong`)** → **`QueryByQueueStatusAsync`(..., `Eventual`)** → **`TryClaimAsync`** → verify with **`Strong`** read. **`ExecutionQueueRepositoryTests`** exercises the same repository with explicit **`ConsistencyLevel`** on each read path. |
 | **Connectivity / schema** | Local responds; tables **ExecutionQueue** and **WorkerNodes** exist; GSIs **PendingExecutionsIndex** and **WorkerAssignmentsIndex** on `ExecutionQueue`. |
 | **`IExecutionQueueRepository`** | Put/get (strong read); query by `queueStatus`; **conditional claim** (`TryClaimAsync`) and second claim fails; query by assigned worker. |
 | **`IWorkerNodeRepository`** | Put/get/delete roundtrip. |
+| **Dynamo consistency routing logs** | **`DynamoDbConsistencyRoutingTests`**: **`GetItem`** logs **ConsistentRead** true/false by **`ConsistencyLevel`**; **GSI Query** logs **PollPending** / **Eventual**. See **[`docs/consistency-integration-test-execution-log.md`](./docs/consistency-integration-test-execution-log.md)**. |
 
 **Mechanics:** Testcontainers runs **`amazon/dynamodb-local`**, creates tables in code (aligned with `setup-dynamodb-local.ps1`), **30s** per-test timeout, **12s** health probe, **`ClientTimeoutSeconds: 15`** and **`MaxErrorRetry = 0`** so a missing endpoint fails fast.
 

@@ -1,10 +1,14 @@
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.DynamoDB.Models;
 using JobScheduler.DAL.DynamoDB.Repositories;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 
 namespace JobScheduler.DAL.DynamoDb.Tests;
 
+/// <summary>
+/// UC 2.1 — Execute a job at a scheduled time: execution queue DAL primitives
+/// (<see cref="IExecutionQueueRepository"/>) with explicit <see cref="ConsistencyLevel"/> on reads where supported.
+/// </summary>
 [Collection("DynamoDbDal")]
 public class ExecutionQueueRepositoryTests
 {
@@ -45,7 +49,7 @@ public class ExecutionQueueRepositoryTests
         try
         {
             await repo.PutAsync(item, ct);
-            var loaded = await repo.GetAsync(id, scheduled, ct);
+            var loaded = await repo.GetAsync(id, scheduled, ct, ConsistencyLevel.Strong);
             Assert.NotNull(loaded);
             Assert.Equal(id, loaded!.QueueId);
             Assert.Equal(scheduled, loaded.ScheduledFor);
@@ -86,7 +90,7 @@ public class ExecutionQueueRepositoryTests
         try
         {
             await repo.PutAsync(item, ct);
-            var pending = await repo.QueryByQueueStatusAsync("pending", limit: 500, ct);
+            var pending = await repo.QueryByQueueStatusAsync("pending", limit: 500, ConsistencyLevel.Eventual, ct);
             Assert.Contains(pending, x => x.QueueId == id && x.ScheduledFor == scheduled);
         }
         finally
@@ -126,7 +130,7 @@ public class ExecutionQueueRepositoryTests
             var ok = await repo.TryClaimAsync(id, scheduled, "worker-dal-test", assignedAt, ct);
             Assert.True(ok);
 
-            var loaded = await repo.GetAsync(id, scheduled, ct);
+            var loaded = await repo.GetAsync(id, scheduled, ct, ConsistencyLevel.Strong);
             Assert.NotNull(loaded);
             Assert.Equal("assigned", loaded!.QueueStatus);
             Assert.Equal("worker-dal-test", loaded.AssignedWorkerId);
@@ -171,7 +175,7 @@ public class ExecutionQueueRepositoryTests
             var at = DateTime.UtcNow.ToString("O");
             await repo.TryClaimAsync(id, scheduled, workerId, at, ct);
 
-            var list = await repo.QueryByAssignedWorkerAsync(workerId, limit: 100, ct);
+            var list = await repo.QueryByAssignedWorkerAsync(workerId, limit: 100, ConsistencyLevel.Eventual, ct);
             Assert.Contains(list, x => x.QueueId == id);
         }
         finally

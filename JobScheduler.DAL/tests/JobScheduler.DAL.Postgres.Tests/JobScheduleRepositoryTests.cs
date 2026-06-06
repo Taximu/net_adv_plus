@@ -1,3 +1,4 @@
+using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.Models;
 using JobScheduler.DAL.Repositories;
 using Microsoft.Extensions.DependencyInjection;
@@ -10,47 +11,6 @@ public sealed class JobScheduleRepositoryTests
     private readonly PostgresDalFixture _fixture;
 
     public JobScheduleRepositoryTests(PostgresDalFixture fixture) => _fixture = fixture;
-
-    [Fact]
-    public async Task GetByIdAsync_throws_when_explicit_partition_key_mismatches_schedule_id()
-    {
-        using var scope = _fixture.Services.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<IJobScheduleRepository>();
-        var scheduleId = Guid.NewGuid();
-        var wrongKey = Guid.NewGuid();
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => repo.GetByIdAsync(scheduleId, wrongKey));
-        Assert.Equal("schedulePartitionKey", ex.ParamName);
-    }
-
-    [Fact]
-    public async Task UpdateAsync_throws_when_explicit_partition_key_mismatches_schedule()
-    {
-        using var scope = _fixture.Services.CreateScope();
-        var repo = scope.ServiceProvider.GetRequiredService<IJobScheduleRepository>();
-        var created = await repo.CreateAsync(new JobSchedule
-        {
-            JobId = _fixture.SeedJobId,
-            ScheduleName = $"dal-partkey-{Guid.NewGuid():N}",
-            ScheduleType = "cron",
-            CronExpression = "0 1 * * *",
-            Timezone = "UTC",
-            StartDate = DateOnly.FromDateTime(DateTime.UtcNow.Date),
-            IsEnabled = true,
-            Priority = 2,
-            Status = "active"
-        });
-
-        try
-        {
-            var ex = await Assert.ThrowsAsync<ArgumentException>(() =>
-                repo.UpdateAsync(created, Guid.NewGuid()));
-            Assert.Equal("schedulePartitionKey", ex.ParamName);
-        }
-        finally
-        {
-            await repo.DeleteAsync(created.ScheduleId);
-        }
-    }
 
     [Fact]
     public async Task CreateAsync_then_GetByIdAsync_roundtrips()
@@ -78,7 +38,7 @@ public sealed class JobScheduleRepositoryTests
             Assert.NotEqual(Guid.Empty, created.ScheduleId);
             Assert.Equal(schedule.ScheduleName, created.ScheduleName);
 
-            var loaded = await repo.GetByIdAsync(created.ScheduleId);
+            var loaded = await repo.GetByIdAsync(created.ScheduleId, ConsistencyLevel.Strong);
             Assert.NotNull(loaded);
             Assert.Equal(created.ScheduleId, loaded!.ScheduleId);
             Assert.Equal("0 3 * * *", loaded.CronExpression);
@@ -118,7 +78,7 @@ public sealed class JobScheduleRepositoryTests
             Assert.Equal(9, updated.Priority);
             Assert.False(updated.IsEnabled);
 
-            var loaded = await repo.GetByIdAsync(created.ScheduleId);
+            var loaded = await repo.GetByIdAsync(created.ScheduleId, ConsistencyLevel.Strong);
             Assert.Equal(created.ScheduleName, loaded!.ScheduleName);
             Assert.Equal(9, loaded.Priority);
         }
@@ -148,7 +108,7 @@ public sealed class JobScheduleRepositoryTests
         });
 
         Assert.True(await repo.DeleteAsync(created.ScheduleId));
-        Assert.Null(await repo.GetByIdAsync(created.ScheduleId));
+        Assert.Null(await repo.GetByIdAsync(created.ScheduleId, ConsistencyLevel.Strong));
         Assert.False(await repo.DeleteAsync(created.ScheduleId));
     }
 
@@ -173,7 +133,7 @@ public sealed class JobScheduleRepositoryTests
 
         try
         {
-            var list = await repo.GetByJobIdAsync(_fixture.SeedJobId);
+            var list = await repo.GetByJobIdAsync(_fixture.SeedJobId, ConsistencyLevel.Eventual);
             Assert.Contains(list, s => s.ScheduleId == created.ScheduleId);
         }
         finally

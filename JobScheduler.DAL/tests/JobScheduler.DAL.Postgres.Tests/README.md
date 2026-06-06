@@ -1,13 +1,12 @@
 # JobScheduler.DAL — PostgreSQL integration tests
 
-Covers **`IJobScheduleRepository`** create / read / update / delete against a real PostgreSQL instance (same `job_schedules` schema as `postgres-replication/init-scripts/02-schema.sql`, including **HASH partitioning** by `schedule_id` into four child tables).
+Covers **`IJobDefinitionRepository`** (UC 1.1 — create / read job catalog with **`ConsistencyLevel`** on reads) and **`IJobScheduleRepository`** create / read / update / delete against a real PostgreSQL instance (same `job_schedules` schema as `postgres-replication/init-scripts/02-schema.sql`, including **HASH partitioning** by `schedule_id` into four child tables).
 
 ## What is verified
 
 | Test | What it checks |
 |------|----------------|
-| `GetByIdAsync_throws_when_explicit_partition_key_mismatches_schedule_id` | Optional `schedulePartitionKey` must equal `scheduleId` (HASH key). |
-| `UpdateAsync_throws_when_explicit_partition_key_mismatches_schedule` | Same validation on **Update**. |
+| **`Uc11CreateJobCatalogDalTests`** | UC 1.1: **`ExistsByNameAsync`(..., `Strong`)** → **`CreateAsync`** → **`GetByIdAsync`(..., `Strong`)** / **`GetByUserIdAsync`(..., `Eventual`)**; **`GetActiveJobsAsync`(`Strong`)** sees seeded active job. |
 | `CreateAsync_then_GetByIdAsync_roundtrips` | Insert + read by id; cron expression stored. |
 | `CreateAsync_UpdateAsync_persists_changes` | Update name, priority, `is_enabled`; read reflects changes. |
 | `CreateAsync_DeleteAsync_removes_row` | Delete succeeds once; row gone; second delete returns false. |
@@ -18,7 +17,7 @@ Covers **`IJobScheduleRepository`** create / read / update / delete against a re
 ## How it runs
 
 - **Testcontainers** starts an official **`postgres:15.1`** container (`Testcontainers.PostgreSql`).
-- **`docker pull`** runs first (same pattern as DynamoDB tests).
+- An optional **`docker pull`** runs first (same pattern as DynamoDB tests). If pull fails (common on **Rancher Desktop** with errors like `lease does not exist`), the fixture **continues** and Testcontainers pulls or uses a cached image. Set **`DAL_TESTCONTAINERS_EXPLICIT_PULL=0`** to skip the pre-pull step entirely.
 - The schema file is copied to build output (`postgres-schema/02-schema.sql`) and applied on startup; one **user** and **job_definition** row are seeded for FK constraints. Inserts target the partitioned parent `job_schedules` transparently.
 - **`PostgresDalFixture.JobScheduleLogCapture`** is a **`ListCapturingLoggerProvider`** wired via **`AddLogging`**; partition-log tests call **`Clear()`** before assertions and inspect **`Snapshot()`**.
 - **Console:** by default the fixture also registers **`AddSimpleConsole`** with filters so **`JobScheduleRepository`** **Debug** lines (including **`PhysicalPartition`** / histogram) appear in **`dotnet test`** output. Set **`DAL_PG_TESTS_SUPPRESS_PARTITION_CONSOLE=1`** to turn that off (e.g. quieter CI).

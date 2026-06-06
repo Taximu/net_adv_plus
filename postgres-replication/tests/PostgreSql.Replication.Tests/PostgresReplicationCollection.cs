@@ -1,5 +1,3 @@
-using Xunit;
-
 namespace PostgreSql.Replication.Tests;
 
 /// <summary>

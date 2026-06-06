@@ -1,9 +1,7 @@
 using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using DotNet.Testcontainers.Networks;
 using Npgsql;
-using Xunit;
 
 namespace PostgreSql.Replication.Tests;
 

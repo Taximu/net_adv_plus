@@ -1,7 +1,6 @@
 using JobScheduler.DAL.DynamoDB.Models;
 using JobScheduler.DAL.DynamoDB.Repositories;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
 
 namespace JobScheduler.DAL.DynamoDb.Tests;
 

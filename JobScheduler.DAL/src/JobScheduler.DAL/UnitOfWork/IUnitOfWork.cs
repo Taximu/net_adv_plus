@@ -5,7 +5,7 @@ namespace JobScheduler.DAL.UnitOfWork;
 public interface IUnitOfWork : IDisposable
 {
     IDbTransaction Transaction { get; }
-    Task BeginAsync();
-    Task CommitAsync();
-    Task RollbackAsync();
+    Task BeginAsync(CancellationToken cancellationToken = default);
+    Task CommitAsync(CancellationToken cancellationToken = default);
+    Task RollbackAsync(CancellationToken cancellationToken = default);
 }
