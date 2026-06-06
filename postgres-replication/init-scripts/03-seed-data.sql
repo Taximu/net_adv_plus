@@ -39,3 +39,24 @@ INSERT INTO schedule_dependencies (schedule_id, depends_on_schedule_id, dependen
     'completion',
     0
 );
+
+-- Bulk schedules (72 rows) to demonstrate HASH(schedule_id) spread across 4 physical partitions
+INSERT INTO job_schedules (schedule_id, job_id, schedule_name, schedule_type, interval_seconds, timezone, start_date, is_enabled, next_execution_at, priority)
+SELECT
+    gen_random_uuid(),
+    jd.job_id,
+    'Partition demo schedule #' || n::TEXT,
+    'interval',
+    1800 + (n % 120),
+    'UTC',
+    CURRENT_DATE + (n % 60),
+    TRUE,
+    CURRENT_TIMESTAMP + (n || ' minutes')::INTERVAL,
+    1 + (n % 9)
+FROM generate_series(1, 72) AS n
+CROSS JOIN LATERAL (
+    SELECT job_id
+    FROM job_definitions
+    ORDER BY name
+    LIMIT 1 OFFSET (n % 3)
+) AS jd;

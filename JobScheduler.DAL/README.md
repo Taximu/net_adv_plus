@@ -6,11 +6,14 @@
 
 | Path | Purpose |
 |------|---------|
+| [`docs/partitioning-strategy.md`](./docs/partitioning-strategy.md) | **Module 04_02:** partitioning vs sharding decision, growth/patterns, HASH `job_schedules` DDL reference, verification queries. |
 | [`src/JobScheduler.DAL/`](./src/JobScheduler.DAL/README.md) | Library project: connection factory, `DatabaseOptions` / `DynamoDbOptions`, repositories, `UnitOfWork`, DynamoDB Local **Docker Compose** and **setup scripts**. |
 | [`tests/JobScheduler.DAL.Postgres.Tests/`](./tests/JobScheduler.DAL.Postgres.Tests/README.md) | Integration tests for **PostgreSQL** — mainly `IJobScheduleRepository` CRUD. |
 | [`tests/JobScheduler.DAL.DynamoDb.Tests/`](./tests/JobScheduler.DAL.DynamoDb.Tests/README.md) | Integration tests for **DynamoDB Local** — execution queue and worker repositories. |
 
 **Design and replication decisions** (volume, consistency, SQL vs NoSQL, replication): [`../replication_task.md`](../replication_task.md).
+
+**Partitioning / sharding (Module 04_02 follow-on):** strategy, growth assumptions, HASH partitions on `job_schedules`, and verification SQL — [`docs/partitioning-strategy.md`](./docs/partitioning-strategy.md). DDL and seed volume live under [`../postgres-replication/init-scripts/`](../postgres-replication/init-scripts/).
 
 **Prerequisites:** [.NET 10 SDK](https://dotnet.microsoft.com/download) (projects target `net10.0`). Docker Engine is required for Testcontainers-based integration tests.
 
@@ -67,7 +70,7 @@ dotnet test .\JobScheduler.DAL\tests\JobScheduler.DAL.DynamoDb.Tests\JobSchedule
 
 ## What the tests verify
 
-### `JobScheduler.DAL.Postgres.Tests` (4 tests)
+### `JobScheduler.DAL.Postgres.Tests` (9 tests)
 
 | Area | What is checked |
 |------|------------------|
@@ -75,8 +78,9 @@ dotnet test .\JobScheduler.DAL\tests\JobScheduler.DAL.DynamoDb.Tests\JobSchedule
 | **`UpdateAsync`** | Name, priority, and `is_enabled` persist; `GetByIdAsync` reflects updates. |
 | **`DeleteAsync`** | Row removed; second delete returns `false`; `GetByIdAsync` is null. |
 | **`GetByJobIdAsync`** | New schedule appears in the list for the seeded job. |
+| **Partition debug logs** | **`JobScheduleRepositoryPartitionLogTests`**: captured **Debug** lines include **`PhysicalPartition=job_schedules_p[0-3]`** after **Create** / **GetById** (hit), and **`RowsPerPhysicalPartition`** / **`job_schedules_p`** after **GetByJobId** (histogram). Uses **`PostgresDalFixture.JobScheduleLogCapture`**. |
 
-**Mechanics:** [Testcontainers.PostgreSql](https://www.nuget.org/packages/Testcontainers.PostgreSql) starts **PostgreSQL 15.1**, applies the same schema as [`../postgres-replication/init-scripts/02-schema.sql`](../postgres-replication/init-scripts/02-schema.sql), seeds one **user** and **job_definition** for FKs. Dapper is configured for **snake_case** columns and **`DateOnly` / `TimeOnly`** (same as `AddDataAccessLayer` at runtime).
+**Mechanics:** [Testcontainers.PostgreSql](https://www.nuget.org/packages/Testcontainers.PostgreSql) starts **PostgreSQL 15.1**, applies the same schema as [`../postgres-replication/init-scripts/02-schema.sql`](../postgres-replication/init-scripts/02-schema.sql), seeds one **user** and **job_definition** for FKs. Dapper is configured for **snake_case** columns and **`DateOnly` / `TimeOnly`** (same as `AddDataAccessLayer` at runtime). The fixture registers a **`ListCapturingLoggerProvider`** plus an optional **simple console** logger (filtered to **`JobScheduleRepository`** at **Debug**) so partition lines show in **`dotnet test`** output; set **`DAL_PG_TESTS_SUPPRESS_PARTITION_CONSOLE=1`** to hide them.
 
 ### `JobScheduler.DAL.DynamoDb.Tests` (7 tests)
 

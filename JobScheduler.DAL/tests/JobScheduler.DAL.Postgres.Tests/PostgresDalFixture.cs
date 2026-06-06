@@ -4,6 +4,7 @@ using JobScheduler.DAL.Configuration;
 using JobScheduler.DAL.Connection;
 using JobScheduler.DAL.Repositories;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -18,6 +19,12 @@ public sealed class PostgresDalFixture : IAsyncLifetime
 {
     private PostgreSqlContainer? _container;
     public ServiceProvider Services { get; private set; } = null!;
+
+    /// <summary>
+    /// Captures <see cref="JobScheduleRepository"/> debug lines (partition / histogram). Clear before assertions.
+    /// Console output of the same lines is enabled by default during tests; set env <c>DAL_PG_TESTS_SUPPRESS_PARTITION_CONSOLE=1</c> to disable.
+    /// </summary>
+    public ListCapturingLoggerProvider JobScheduleLogCapture { get; private set; } = null!;
 
     /// <summary>Pre-seeded <c>job_definitions.job_id</c> for schedule FK tests.</summary>
     public Guid SeedJobId { get; private set; }
@@ -72,6 +79,29 @@ public sealed class PostgresDalFixture : IAsyncLifetime
 
         var services = new ServiceCollection();
         services.AddOptions();
+        var logCapture = new ListCapturingLoggerProvider();
+        JobScheduleLogCapture = logCapture;
+
+        var suppressPartitionConsole = string.Equals(
+            Environment.GetEnvironmentVariable("DAL_PG_TESTS_SUPPRESS_PARTITION_CONSOLE"),
+            "1",
+            StringComparison.OrdinalIgnoreCase);
+
+        services.AddLogging(builder =>
+        {
+            // Keep other categories quiet; partition CRUD logs are Debug on JobScheduleRepository only.
+            builder.SetMinimumLevel(LogLevel.Warning);
+            builder.AddFilter(typeof(JobScheduleRepository).FullName!, LogLevel.Debug);
+            builder.AddProvider(logCapture);
+            if (!suppressPartitionConsole)
+            {
+                builder.AddSimpleConsole(o =>
+                {
+                    o.SingleLine = true;
+                    o.TimestampFormat = "HH:mm:ss ";
+                });
+            }
+        });
         services.Configure<DatabaseOptions>(o =>
         {
             o.PostgresWriteConnectionString = writeCs;

@@ -1,8 +1,8 @@
 # Streaming replication stack for integration tests (Bitnami PostgreSQL).
-# Primary mounts only *.sql from ./init-scripts (Bitnami already configures replication
-# and pg_hba). Avoid mounting 00-pg_hba-replication.sh from Windows: CRLF line endings
-# break the shebang inside Linux (env: 'sh\r'). Replicas inherit data via streaming.
-# Ports align with common local layout: primary 5432, replicas 5434 / 5435.
+# Compose project name is fixed so this file is never merged accidentally with
+# docker-compose-postgres-replication.yml (merging would bind-mount all of ./init-scripts
+# and run 00-pg_hba-replication.sh, which is for the official postgres image only).
+# Ports: primary 5432, replicas 5434 / 5435.
 #
 # Start:  docker compose -f docker-compose.streaming-for-tests.yml up -d
 # Wait:   until healthchecks pass (~30–60s first boot)
@@ -10,10 +10,11 @@
 #
 # Stop any other service bound to 5432/5434/5435 before starting.
 
+name: postgres-streaming-for-tests
+
 services:
   postgres-primary:
     image: docker.io/bitnamilegacy/postgresql:15.10.0-debian-12-r2
-    container_name: postgres-primary-streaming
     environment:
       POSTGRESQL_REPLICATION_MODE: master
       POSTGRESQL_REPLICATION_USER: replicator
@@ -39,7 +40,6 @@ services:
 
   postgres-replica1:
     image: docker.io/bitnamilegacy/postgresql:15.10.0-debian-12-r2
-    container_name: postgres-replica1-streaming
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
       POSTGRESQL_REPLICATION_USER: replicator
@@ -67,7 +67,6 @@ services:
 
   postgres-replica2:
     image: docker.io/bitnamilegacy/postgresql:15.10.0-debian-12-r2
-    container_name: postgres-replica2-streaming
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
       POSTGRESQL_REPLICATION_USER: replicator

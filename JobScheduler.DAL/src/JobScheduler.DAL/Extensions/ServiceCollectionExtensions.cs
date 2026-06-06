@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using JobScheduler.DAL.Connection;
 using JobScheduler.DAL.Repositories;
 using JobScheduler.DAL.UnitOfWork;
@@ -19,6 +20,7 @@ public static class ServiceCollectionExtensions
         DefaultTypeMap.MatchNamesWithUnderscores = true;
         DapperNpgsqlConfiguration.RegisterDateAndTimeHandlers();
         services.Configure<DatabaseOptions>(configuration.GetSection("Database"));
+        services.AddLogging();
         services.AddScoped<IDbConnectionFactory, PostgresConnectionFactory>();
         services.AddScoped<IJobDefinitionRepository, JobDefinitionRepository>();
         services.AddScoped<IJobScheduleRepository, JobScheduleRepository>();
