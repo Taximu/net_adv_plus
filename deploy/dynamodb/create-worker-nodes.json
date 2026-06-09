@@ -1,0 +1,12 @@
+{
+  "TableName": "WorkerNodes",
+  "BillingMode": "PAY_PER_REQUEST",
+  "AttributeDefinitions": [
+    { "AttributeName": "workerId", "AttributeType": "S" },
+    { "AttributeName": "registeredAt", "AttributeType": "S" }
+  ],
+  "KeySchema": [
+    { "AttributeName": "workerId", "KeyType": "HASH" },
+    { "AttributeName": "registeredAt", "KeyType": "RANGE" }
+  ]
+}

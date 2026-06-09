@@ -1,0 +1,37 @@
+{
+  "TableName": "ExecutionQueue",
+  "BillingMode": "PAY_PER_REQUEST",
+  "AttributeDefinitions": [
+    { "AttributeName": "queueId", "AttributeType": "S" },
+    { "AttributeName": "scheduledFor", "AttributeType": "S" },
+    { "AttributeName": "queueStatus", "AttributeType": "S" },
+    { "AttributeName": "priority", "AttributeType": "N" },
+    { "AttributeName": "assignedWorkerId", "AttributeType": "S" },
+    { "AttributeName": "assignedAt", "AttributeType": "S" }
+  ],
+  "KeySchema": [
+    { "AttributeName": "queueId", "KeyType": "HASH" },
+    { "AttributeName": "scheduledFor", "KeyType": "RANGE" }
+  ],
+  "GlobalSecondaryIndexes": [
+    {
+      "IndexName": "PendingExecutionsIndex",
+      "KeySchema": [
+        { "AttributeName": "queueStatus", "KeyType": "HASH" },
+        { "AttributeName": "priority", "KeyType": "RANGE" }
+      ],
+      "Projection": {
+        "ProjectionType": "INCLUDE",
+        "NonKeyAttributes": ["jobId", "scheduleId", "scheduledFor", "executionContext"]
+      }
+    },
+    {
+      "IndexName": "WorkerAssignmentsIndex",
+      "KeySchema": [
+        { "AttributeName": "assignedWorkerId", "KeyType": "HASH" },
+        { "AttributeName": "assignedAt", "KeyType": "RANGE" }
+      ],
+      "Projection": { "ProjectionType": "ALL" }
+    }
+  ]
+}

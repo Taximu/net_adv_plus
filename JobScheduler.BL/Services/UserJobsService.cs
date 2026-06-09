@@ -8,11 +8,13 @@ public sealed class UserJobsService : IUserJobsService
 {
     private readonly IJobDefinitionRepository _jobs;
     private readonly ConsistencyManager _consistency;
+    private readonly IJobCatalogEventSink _catalogEvents;
 
-    public UserJobsService(IJobDefinitionRepository jobs, ConsistencyManager consistency)
+    public UserJobsService(IJobDefinitionRepository jobs, ConsistencyManager consistency, IJobCatalogEventSink catalogEvents)
     {
         _jobs = jobs;
         _consistency = consistency;
+        _catalogEvents = catalogEvents;
     }
 
     public async Task<IReadOnlyList<JobDefinition>> ListMyJobsAsync(Guid userId, CancellationToken cancellationToken = default)
@@ -50,6 +52,20 @@ public sealed class UserJobsService : IUserJobsService
 
         var created = await _jobs.CreateAsync(job, cancellationToken).ConfigureAwait(false);
         _consistency.TrackWrite(userKey);
+
+        await _catalogEvents
+            .PublishJobDefinitionCreatedAsync(
+                new JobCatalogCreatedEventPayload(
+                    created.JobId,
+                    created.UserId,
+                    created.Name,
+                    created.JobType,
+                    created.Status,
+                    created.CreatedBy,
+                    DateTimeOffset.UtcNow),
+                cancellationToken)
+            .ConfigureAwait(false);
+
         return created;
     }
 

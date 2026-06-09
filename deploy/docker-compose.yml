@@ -1,0 +1,193 @@
+# Full local stack: PostgreSQL (catalog), DynamoDB Local (execution queue), Redpanda (Kafka API),
+# JobScheduler.Api + JobManager (catalog consumer) + JobOrchestrator (lifecycle consumer + batch peek).
+#
+# From this directory:
+#   docker compose up -d --build
+#
+# API:        http://localhost:5000/swagger
+# Redpanda UI: http://localhost:8888
+# Postgres:   localhost:55432 (job_admin / StrongPass123) — avoid clashing with host 5432
+# DynamoDB:   http://localhost:18000 (admin optional on 8001 if you add dynamodb-admin)
+
+name: jobscheduler-stack
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: job_admin
+      POSTGRES_PASSWORD: StrongPass123
+      POSTGRES_DB: job_config_db
+    ports:
+      - "55432:5432"
+    volumes:
+      - stack_pgdata:/var/lib/postgresql/data
+      - ../postgres-replication/init-scripts/02-schema.sql:/docker-entrypoint-initdb.d/02-schema.sql:ro
+      - ../postgres-replication/init-scripts/03-seed-data.sql:/docker-entrypoint-initdb.d/03-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U job_admin -d job_config_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    networks:
+      - stack
+
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    working_dir: /home/dynamodblocal
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory -disableTelemetry"
+    ports:
+      - "18000:8000"
+    networks:
+      - stack
+
+  dynamodb-init:
+    build:
+      context: ./dynamodb
+      dockerfile: Dockerfile.init
+    depends_on:
+      - dynamodb-local
+    environment:
+      DYNAMO_ENDPOINT: http://dynamodb-local:8000
+    networks:
+      - stack
+    restart: "no"
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.11
+    hostname: redpanda
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+      - --smp
+      - "1"
+      - --memory
+      - 768M
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"
+      - "19644:9644"
+    volumes:
+      - stack_redpanda:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster info --brokers 127.0.0.1:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+    networks:
+      - stack
+
+  topic-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.11
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - stack
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        rpk topic create job.catalog.events --brokers redpanda:9092 --partitions 6 --replicas 1 -c retention.ms=604800000 2>/dev/null || true
+        rpk topic create execution.lifecycle --brokers redpanda:9092 --partitions 6 --replicas 1 -c retention.ms=604800000 2>/dev/null || true
+        rpk topic list --brokers redpanda:9092
+    restart: "no"
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      CONFIG_FILEPATH: /tmp/config.yml
+    volumes:
+      - ../messaging/redpanda-console-config.yml:/tmp/config.yml:ro
+    ports:
+      - "8888:8080"
+    networks:
+      - stack
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dynamodb-local:
+        condition: service_started
+      dynamodb-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      Database__PostgresWriteConnectionString: "Host=postgres;Port=5432;Database=job_config_db;Username=job_admin;Password=StrongPass123"
+      # Override every appsettings.json read-replica slot (host 5434/5435) or round-robin eventual reads still hit localhost inside the container.
+      Database__PostgresReadConnectionStrings__0: "Host=postgres;Port=5432;Database=job_config_db;Username=job_admin;Password=StrongPass123"
+      Database__PostgresReadConnectionStrings__1: "Host=postgres;Port=5432;Database=job_config_db;Username=job_admin;Password=StrongPass123"
+      DynamoDB__ServiceUrl: "http://dynamodb-local:8000"
+      DynamoDB__AccessKeyId: "local"
+      DynamoDB__SecretAccessKey: "local"
+      Messaging__Publishers__Enabled: "true"
+      Messaging__Publishers__BootstrapServers: "redpanda:9092"
+      Messaging__Publishers__ClientId: "jobscheduler-api"
+    ports:
+      - "5000:8080"
+    networks:
+      - stack
+
+  jobmanager:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.jobmanager
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
+    environment:
+      Messaging__Consumers__Catalog__BootstrapServers: "redpanda:9092"
+      Messaging__Consumers__Catalog__GroupId: "job-manager-catalog"
+      Messaging__Consumers__Catalog__AutoOffsetReset: "earliest"
+    networks:
+      - stack
+
+  orchestrator:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.joborchestrator
+    depends_on:
+      api:
+        condition: service_started
+      redpanda:
+        condition: service_healthy
+      topic-init:
+        condition: service_completed_successfully
+    environment:
+      Messaging__Consumers__Lifecycle__BootstrapServers: "redpanda:9092"
+      Messaging__Consumers__Lifecycle__GroupId: "job-orchestrator-lifecycle"
+      Messaging__Consumers__Lifecycle__AutoOffsetReset: "earliest"
+      Orchestrator__Batch__ApiBaseUrl: "http://api:8080"
+      Orchestrator__Batch__IntervalSeconds: "30"
+      Orchestrator__Batch__PendingPeekLimit: "25"
+    networks:
+      - stack
+
+networks:
+  stack:
+    driver: bridge
+
+volumes:
+  stack_pgdata:
+  stack_redpanda:

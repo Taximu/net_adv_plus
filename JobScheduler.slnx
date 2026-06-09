@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/JobScheduler.DAL/" />
+  <Folder Name="/JobScheduler.DAL/src/">
+    <Project Path="JobScheduler.DAL/src/JobScheduler.DAL/JobScheduler.DAL.csproj" />
+  </Folder>
+  <Project Path="JobScheduler.Api/JobScheduler.Api.csproj" />
+  <Project Path="JobScheduler.BL/JobScheduler.BL.csproj" />
+  <Project Path="JobScheduler.JobManager/JobScheduler.JobManager.csproj" />
+  <Project Path="JobScheduler.JobOrchestrator/JobScheduler.JobOrchestrator.csproj" />
+  <Project Path="JobScheduler.Messaging/JobScheduler.Messaging.csproj" />
+</Solution>

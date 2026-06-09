@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\JobScheduler.Messaging\JobScheduler.Messaging.csproj" />
     <ProjectReference Include="..\JobScheduler.DAL\src\JobScheduler.DAL\JobScheduler.DAL.csproj" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
   </ItemGroup>
