@@ -527,3 +527,151 @@ A **distributed transaction** is a logical unit of work whose **reads and writes
 4. Why is Correlation ID a good practice in distributed transactions, and how does it help with debugging and tracing?
 
 A **correlation ID** is a **stable identifier** attached to the first inbound request and propagated across **logs, messages, and HTTP headers** for every hop in a saga or call chain. It lets operators **join** scattered log lines into **one story**, measure **end-to-end latency**, find **failed branch** of a partial saga, and tie **metrics/traces** together—essential when atomicity is replaced by **compensation** and many services participate asynchronously.
+
+## Module 6 — Scaling, batch/stream processing, MapReduce, messaging, event sourcing, caching
+
+### 1. Scaling fundamentals
+
+1. What is the difference between vertical and horizontal scaling? What are the trade-offs of each approach?
+
+**Vertical scaling** means making a single node bigger (more CPU, RAM, disk I/O, faster network). It is simpler to operate and keeps data locality on one machine, but you can reach hardware limits, longer maintenance, and a **single point of failure** unless you add redundancy outside that box.
+
+**Horizontal scaling** means adding more nodes to a pool and spreading work across them. It supports **growth** and better **fault tolerance**, but **distributed-system complexity** adds problems with consistency, partitioning, coordination, and stateless or carefully replicated state.
+
+2. What is load balancing, and why is it essential for horizontally scaled systems?
+
+**Load balancing** is distributing incoming work (HTTP requests, TCP connections, gRPC calls, queue consumers, etc.) across multiple healthy backends according to a policy (round-robin, least connections, weighted, geographic, etc.). For horizontal scale it is essential because **clients need one entry point** while **many instances share the load**; without a balancer, traffic would skew to one node, negating scale-out and hurting availability. Balancers also enable **health checks**, **draining**, and **TLS termination**.
+
+3. How does fault tolerance contribute to system reliability in distributed architectures?
+
+**Fault tolerance** means the system continues correct or degraded service when components fail (crashes, slow disks, bad deploys, AZ outages). Techniques include **redundancy**, **replication**, **timeouts and retries with backoff**, **circuit breakers**, **bulkheads**, **idempotent handlers**, and **chaos testing**. Reliability improves because failures are **expected and bounded** instead of cascading; users see fewer outages and data loss when paired with durability and recovery procedures.
+
+### 2. Batch and stream processing
+
+1. What is batch processing, and what are typical use cases where batch processing is most appropriate?
+
+**Batch processing** runs jobs over **finite datasets** on a schedule, optimizing **throughput and cost per byte** over latency. Good fits: nightly **ETL**, **large reports**, **backfills**, and **reconciliation** where minutes-to-hours delay is acceptable.
+
+2. What is stream processing, and how does it differ from batch processing in terms of data handling and latency?
+
+**Stream processing** consumes **continuous, unbounded** event flows and applies transformations **incrementally** as data arrives. Latency is typically **sub-second to low seconds** for useful outputs; state is often **windowed** or **keyed** with **low watermark** semantics. Batch waits for completeness of a slice; streams trade **exact boundary** control for **timeliness** and must handle **late/out-of-order** data explicitly.
+
+3. When would you choose a hybrid processing architecture that combines both batch and stream processing?
+
+Use **hybrid** when you need **fast signals now** and **correct, cheap reconciliation later**: e.g. **real-time fraud scoring** (stream) plus **daily ledger audit** (batch), **live dashboards** (stream aggregates) plus **monthly financial close** (batch), or **Lambda/Kappa** style corrections where a batch job **reprocesses** a window to fix drift. It balances **SLA vs cost** and **approximate vs authoritative** results.
+
+4. What are the main challenges when implementing stream processing in high-load systems?
+
+**Backpressure and skewed keys** (hot partitions), **state size and recovery** (checkpoints, changelog), **exactly-once vs at-least-once** semantics and **idempotency**, **late data** and **watermarks**, **ordering** guarantees across shards, **operational complexity** (versioned jobs, replay), and **joining streams** with **correct time semantics** under load.
+
+### 3. MapReduce and distributed processing
+
+1. What is the MapReduce programming model, and how does it enable distributed data processing?
+
+**MapReduce** is a **data-parallel** pattern: **map** functions run **independently** on splits of input and emit intermediate key-value pairs; a **shuffle** groups all values by key; **reduce** functions aggregate each key’s group. The framework handles **scheduling**, **fault recovery** (re-run failed tasks), and **data locality** (run maps where blocks live), so developers focus on **pure-ish map/reduce logic** while the cluster scales out.
+
+2. What are the Map and Reduce phases, and what happens in each phase?
+
+**Map:** each worker reads an **input split**, applies the user’s **map** function, and writes **intermediate** `(key, value)` records—often to local disk—partitioned by key for the shuffle.
+
+**Reduce:** after shuffle/sort, each **reducer** pulls its partition of keys, iterates sorted values for each key, and runs the user’s **reduce** function to produce **final outputs** (often one row/file per key group).
+
+3. What are some real-world applications that benefit from MapReduce?
+
+**Large-scale log analytics**, **web indexing**, **genomics**, **clickstream aggregation**, **ETL on data lakes**, **training data prep**, and **batch feature generation**—anywhere data is **huge**, **embarrassingly parallel** in the map stage, and needs **group-by-key** aggregation.
+
+### 4. Messaging and event-driven architecture
+
+1. What is the role of a message broker in a distributed system?
+
+A **message broker** (Kafka, RabbitMQ, NATS, etc.) **buffers**, **routes**, and often **persists** messages between producers and consumers. It **decouples** senders and receivers in time and scale, smooths **spikes**, supports **fan-out**, and provides **delivery semantics** (at-most-once, at-least-once, exactly-once with caveats), **ordering** per partition, and **replay** for recovery.
+
+2. What is the difference between the Publisher-Subscriber pattern and the Producer-Consumer pattern?
+
+**Pub/Sub:** publishers emit to **topics** or **exchanges** without knowing subscribers; **many subscribers** can receive the **same** message (broadcast or filtered). **Producer-Consumer:** work is placed in a **queue** and **competing consumers** each take **distinct** messages—one message is usually processed **once** (load-sharing), unless you use competing subscriptions with special rules.
+
+3. What is an event stream, and how is it used in event-driven architectures?
+
+An **event stream** is an **append-only, ordered** sequence of **facts** (domain events) over time, often partitioned for scale. In event-driven architectures, services **publish** streams of what happened; others **subscribe** to react, build **read models**, trigger **integrations**, or drive **sagas**—time becomes a first-class axis of the design.
+
+4. What are the benefits of using event-driven architecture compared to synchronous request-response patterns?
+
+**Looser coupling** and **better resilience** under slow/failing peers (async buffering), **natural scale-out** of consumers, **clearer audit trails** of what occurred, **elasticity** to traffic bursts, and **independent deployment** of handlers—at the cost of **eventual consistency**, **distributed debugging**, and **schema evolution** discipline.
+
+### 5. Event sourcing
+
+1. What is event sourcing, and how does it differ from traditional state management?
+
+**Event sourcing** stores the **sequence of state-changing events** as the **system of record** and derives current state by **replaying** (or folding) them—often with **snapshots** for speed. Traditional state management **overwrites** rows/documents in place; history is secondary or lost unless you add auditing separately.
+
+2. What are the main benefits and challenges of implementing event sourcing?
+
+**Benefits:** **complete audit trail**, **temporal queries** (“as of”), **replay** for new projections or bug fixes, and alignment with **event-driven** integration.
+
+**Challenges:** **schema evolution** on old events, **storage growth**, **performance** of long replays without snapshots, **complexity** in application code, **PII** in immutable logs, and **global ordering** across aggregates.
+
+3. How do event sourcing and CQRS complement each other in distributed systems?
+
+**CQRS** splits **commands** (writes) from **queries** (reads), often with **different models**. Event sourcing fits naturally as the **write side**: append events; **projectors** build **read models** optimized for queries. This keeps the **write path** simple and append-only while **read paths** scale and evolve **independently** (see also the **DB: Replication** module for CQRS details).
+
+### 6. Advanced patterns
+
+1. Why is immutability important in event-driven systems, especially with respect to state management?
+
+**Immutable events** are a **stable, auditable** source of truth: consumers can **replay**, **rebuild projections**, and **detect duplicates** deterministically. Mutating stored events in place breaks **ordering**, **replay**, and **multi-consumer** assumptions; immutability pairs with **compensating events** instead of silent edits, which preserves **causal history** and simplifies **recovery**.
+
+### 7. Caching and performance
+
+1. What are common distributed caching patterns (cache-aside, write-through, write-behind)?
+
+**Cache-aside:** app reads cache first, on miss loads from DB and **populates** cache; writes update DB and **invalidate or update** cache explicitly—simple, but risk of **stale** data if invalidation is wrong.
+
+**Write-through:** writes go **through** the cache to the backing store synchronously—**stronger consistency** between cache and DB, **higher write latency**.
+
+**Write-behind (write-back):** writes hit **cache first** and **async flush** to DB—**low write latency** and **burst absorption**, but **durability risk** until flush and **complex failure** handling.
+
+2. How does distributed caching help address scalability bottlenecks?
+
+Shared caches (e.g. **Redis cluster**) offload **hot reads** from databases, reduce **connection** and **CPU** pressure on primaries, and keep **session or computed** state near compute. **Horizontal cache shards** replicate the “cheap read” tier so application instances stay **stateless** while perceived **latency** drops.
+
+3. What factors should you consider when setting cache expiration (TTL) policies?
+
+**Data freshness** requirements, **cost** of stale reads vs DB load, **key churn** and **memory** pressure, **negative caching** for misses, **jitter** to avoid **thundering herds**, **legal retention** for sensitive values, and whether **event-driven invalidation** can replace or shorten TTLs for critical keys.
+
+### 8. Practical application
+
+1. For a job scheduling system, would you use batch processing, stream processing, or a hybrid approach for executing scheduled jobs? Justify your choice.
+
+**Hybrid (or stream-primary with batch maintenance)** is usually best: **stream or queue-driven workers** fire jobs at their **due times** with low latency and scale with **consumer groups**; **batch** jobs handle **reconciliation**, **backfills**, **metrics rollups**, and **data repair** after outages. Pure batch is too coarse for “run at 09:00:00”; pure infinite stream still benefits from **periodic** correctness passes.
+
+2. What events would you publish for the use case "Create a New Job"? Design a sample event schema.
+
+Publish **domain events** that reflect facts, not internal DTO noise, e.g. `JobCreated` after persistence. Sample **JSON** schema (illustrative):
+
+```json
+{
+  "eventType": "JobCreated",
+  "eventVersion": 1,
+  "occurredAt": "2026-06-08T12:00:00.000Z",
+  "jobId": "550e8400-e29b-41d4-a716-446655440000",
+  "tenantId": "acme",
+  "schedule": {
+    "kind": "cron",
+    "expression": "0 9 * * MON-FRI",
+    "timeZone": "Europe/Moscow"
+  },
+  "definitionRef": "urn:jobdef:reports:daily-sales",
+  "createdBy": "user:42",
+  "correlationId": "7b2c3d4e-8f90-1a2b-3c4d-5e6f708192a0"
+}
+```
+
+You might also emit **`JobCreationRequested`** before commit and **`JobCreationFailed`** on validation errors if other services must react.
+
+3. How would you handle failure scenarios in an event-driven architecture (e.g., message broker downtime, consumer failures)?
+
+**Broker downtime:** buffer on producer side if possible, **idempotent** publishing, **outbox pattern** with DB so messages **survive** restarts; degrade gracefully with **circuit breakers** and **alerting**. **Consumer failures:** **at-least-once** processing with **idempotent handlers**, **retry** with backoff, **DLQ** for poison messages, **rebalancing** partitions on crash, **health checks** and **auto-restart**, and **replay** from durable log offsets after fixes.
+
+4. If you need to process 1 million jobs scheduled for execution at the same time, what processing model and architecture would you choose?
+
+Use a **durable queue or partitioned event log** (Kafka/SQS/etc.) plus **many stateless workers** behind **autoscaling** (Kubernetes, serverless with concurrency limits), **shard by partition key** (tenant or job type) to avoid hot keys, **rate limits** to downstream systems, **idempotency keys**, **scheduler** that enqueues **fire times** rather than running 1M timers in one process, and **backpressure**—optionally a **two-tier** model: quick **acceptance** path and **throttled execution** to protect dependencies. **Batch** analytics afterward for **SLA reporting**.
