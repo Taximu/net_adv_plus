@@ -4,12 +4,14 @@ using JobScheduler.BL.Services;
 using JobScheduler.DAL.Extensions;
 using JobScheduler.DAL.Models;
 using JobScheduler.DAL.DynamoDB.Models;
+using JobScheduler.Messaging;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDataAccessLayer(builder.Configuration);
 builder.Services.AddDynamoDbDataAccessLayer(builder.Configuration);
+builder.Services.AddJobSchedulerMessagingPublishers(builder.Configuration);
 builder.Services.AddJobSchedulerBusinessLogic();
 
 builder.Services.AddEndpointsApiExplorer();

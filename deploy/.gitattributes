@@ -1,0 +1,2 @@
+# Shell scripts used by Linux containers must use LF line endings (avoid CRLF).
+deploy/dynamodb/bootstrap.py text eol=lf

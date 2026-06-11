@@ -1,0 +1,11 @@
+# Redpanda Console — connects to the broker on the Docker network.
+# Host copy is mounted into the console container as /tmp/config.yml
+# (see docker-compose.yml CONFIG_FILEPATH).
+
+kafka:
+  brokers: ["redpanda:9092"]
+
+redpanda:
+  adminApi:
+    enabled: true
+    urls: ["http://redpanda:9644"]

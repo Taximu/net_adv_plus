@@ -1,0 +1,17 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY JobScheduler.Messaging/JobScheduler.Messaging.csproj JobScheduler.Messaging/
+COPY JobScheduler.JobManager/JobScheduler.JobManager.csproj JobScheduler.JobManager/
+
+RUN dotnet restore JobScheduler.JobManager/JobScheduler.JobManager.csproj
+
+COPY JobScheduler.Messaging/ JobScheduler.Messaging/
+COPY JobScheduler.JobManager/ JobScheduler.JobManager/
+
+RUN dotnet publish JobScheduler.JobManager/JobScheduler.JobManager.csproj -c Release -o /app/publish
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0
+WORKDIR /app
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "JobScheduler.JobManager.dll"]

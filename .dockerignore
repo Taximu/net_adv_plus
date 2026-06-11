@@ -1,0 +1,10 @@
+# Docker build context (repo root) — keep host bin/obj and tooling out of the image.
+**/bin/
+**/obj/
+**/.git/
+**/.vs/
+**/.idea/
+**/TestResults/
+**/*.user
+**/agent-tools/
+**/terminals/
