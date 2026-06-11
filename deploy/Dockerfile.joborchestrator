@@ -2,18 +2,21 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY JobScheduler.Messaging/JobScheduler.Messaging.csproj JobScheduler.Messaging/
+COPY JobScheduler.BL/JobScheduler.BL.csproj JobScheduler.BL/
 COPY JobScheduler.DAL/src/JobScheduler.DAL/JobScheduler.DAL.csproj JobScheduler.DAL/src/JobScheduler.DAL/
 COPY JobScheduler.JobOrchestrator/JobScheduler.JobOrchestrator.csproj JobScheduler.JobOrchestrator/
 
 RUN dotnet restore JobScheduler.JobOrchestrator/JobScheduler.JobOrchestrator.csproj
 
 COPY JobScheduler.Messaging/ JobScheduler.Messaging/
+COPY JobScheduler.BL/ JobScheduler.BL/
 COPY JobScheduler.DAL/src/JobScheduler.DAL/ JobScheduler.DAL/src/JobScheduler.DAL/
 COPY JobScheduler.JobOrchestrator/ JobScheduler.JobOrchestrator/
 
 RUN dotnet publish JobScheduler.JobOrchestrator/JobScheduler.JobOrchestrator.csproj -c Release -o /app/publish
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /app/publish .
+ENV ASPNETCORE_URLS=http://+:8080
 ENTRYPOINT ["dotnet", "JobScheduler.JobOrchestrator.dll"]

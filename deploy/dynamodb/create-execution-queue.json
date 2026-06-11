@@ -7,7 +7,8 @@
     { "AttributeName": "queueStatus", "AttributeType": "S" },
     { "AttributeName": "priority", "AttributeType": "N" },
     { "AttributeName": "assignedWorkerId", "AttributeType": "S" },
-    { "AttributeName": "assignedAt", "AttributeType": "S" }
+    { "AttributeName": "assignedAt", "AttributeType": "S" },
+    { "AttributeName": "jobId", "AttributeType": "S" }
   ],
   "KeySchema": [
     { "AttributeName": "queueId", "KeyType": "HASH" },
@@ -30,6 +31,14 @@
       "KeySchema": [
         { "AttributeName": "assignedWorkerId", "KeyType": "HASH" },
         { "AttributeName": "assignedAt", "KeyType": "RANGE" }
+      ],
+      "Projection": { "ProjectionType": "ALL" }
+    },
+    {
+      "IndexName": "JobExecutionsIndex",
+      "KeySchema": [
+        { "AttributeName": "jobId", "KeyType": "HASH" },
+        { "AttributeName": "scheduledFor", "KeyType": "RANGE" }
       ],
       "Projection": { "ProjectionType": "ALL" }
     }

@@ -40,5 +40,6 @@ public class DynamoDbConnectivityTests
         var names = desc.Table.GlobalSecondaryIndexes.Select(g => g.IndexName).ToHashSet();
         Assert.Contains("PendingExecutionsIndex", names);
         Assert.Contains("WorkerAssignmentsIndex", names);
+        Assert.Contains("JobExecutionsIndex", names);
     }
 }

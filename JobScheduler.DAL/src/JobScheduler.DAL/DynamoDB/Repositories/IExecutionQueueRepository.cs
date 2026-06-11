@@ -37,6 +37,18 @@ public interface IExecutionQueueRepository
         ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// UC 2.3 — query <c>JobExecutionsIndex</c> by <paramref name="jobId"/> (GSI partition key), ordered by <c>scheduledFor</c>.
+    /// GSI reads are eventually consistent regardless of <paramref name="consistencyLevel"/>.
+    /// </summary>
+    Task<(IReadOnlyList<ExecutionQueueItem> Items, string? NextPaginationToken)> QueryByJobIdAsync(
+        string jobId,
+        int limit,
+        string? paginationToken,
+        bool scanIndexForward = false,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Conditional update: pending → assigned. Returns false if not pending.</summary>
     Task<bool> TryClaimAsync(string queueId, string scheduledFor, string workerId, string assignedAtIso, CancellationToken cancellationToken = default);
 
