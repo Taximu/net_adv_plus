@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package jobscheduler.orchestrator.v1;
+
+option csharp_namespace = "JobScheduler.JobOrchestrator.Grpc.History";
+
+service JobExecutionHistory {
+  rpc GetExecutionHistoryPage(GetExecutionHistoryPageRequest)
+      returns (GetExecutionHistoryPageResponse);
+}
+
+message GetExecutionHistoryPageRequest {
+  string job_id = 1;
+  int32 limit = 2;
+  string pagination_token = 3;
+  bool full_details = 4;
+}
+
+message GetExecutionHistoryPageResponse {
+  string job_id = 1;
+  string next_cursor = 2;
+  repeated ExecutionHistoryRow events = 3;
+}
+
+message ExecutionHistoryRow {
+  string queue_id = 1;
+  string scheduled_for = 2;
+  string schedule_id = 3;
+  string queue_status = 4;
+  int32 priority = 5;
+  int32 retry_count = 6;
+  int32 max_retries = 7;
+  string started_at = 8;
+  string completed_at = 9;
+  string timeout_at = 10;
+  string assigned_worker_id = 11;
+  optional ExecutionHistoryContext context = 12;
+  optional ExecutionHistoryResult result = 13;
+}
+
+message ExecutionHistoryContext {
+  string environment = 1;
+  string trigger_source = 2;
+  string user_id = 3;
+  map<string, string> parameters = 4;
+}
+
+message ExecutionHistoryResult {
+  string status = 1;
+  optional int32 status_code = 2;
+  optional int64 response_size_bytes = 3;
+  string error_code = 4;
+  string error_message = 5;
+  string error_stack = 6;
+}

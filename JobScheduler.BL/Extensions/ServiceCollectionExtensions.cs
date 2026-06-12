@@ -16,6 +16,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<ISchedulerCatalogService, SchedulerCatalogService>();
         services.AddScoped<IUserSchedulesService, UserSchedulesService>();
         services.AddScoped<IExecutionOrchestrationService, ExecutionOrchestrationService>();
+        services.AddScoped<IJobExecutionHistoryService, JobExecutionHistoryService>();
         return services;
     }
 }

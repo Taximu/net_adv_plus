@@ -51,6 +51,16 @@
             { "attributeName": "assignedWorkerId", "keyType": "HASH" },
             { "attributeName": "assignedAt", "keyType": "RANGE" }
           ]
+        },
+        {
+          "indexName": "JobExecutionsIndex",
+          "keySchema": [
+            { "attributeName": "jobId", "keyType": "HASH" },
+            { "attributeName": "scheduledFor", "keyType": "RANGE" }
+          ],
+          "projection": {
+            "projectionType": "ALL"
+          }
         }
       ],
       "attributes": {

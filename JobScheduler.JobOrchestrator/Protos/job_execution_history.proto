@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package jobscheduler.orchestrator.v1;
+
+option csharp_namespace = "JobScheduler.JobOrchestrator.Grpc.History";
+
+// UC 2.3 — same data as JSON GET /api/internal/jobs/{jobId}/executions/history (binary Protobuf on gRPC).
+service JobExecutionHistory {
+  rpc GetExecutionHistoryPage(GetExecutionHistoryPageRequest)
+      returns (GetExecutionHistoryPageResponse);
+}
+
+message GetExecutionHistoryPageRequest {
+  // Required. Canonical GUID string (e.g. 550e8400-e29b-41d4-a716-446655440000).
+  string job_id = 1;
+  // Optional; server clamps to [1, 200]. Zero means use default (50).
+  int32 limit = 2;
+  // Opaque cursor from prior response next_cursor.
+  string pagination_token = 3;
+  // When true, includes execution context (with parameters) and full error text/stack.
+  bool full_details = 4;
+}
+
+message GetExecutionHistoryPageResponse {
+  string job_id = 1;
+  string next_cursor = 2;
+  repeated ExecutionHistoryRow events = 3;
+}
+
+message ExecutionHistoryRow {
+  string queue_id = 1;
+  string scheduled_for = 2;
+  string schedule_id = 3;
+  string queue_status = 4;
+  int32 priority = 5;
+  int32 retry_count = 6;
+  int32 max_retries = 7;
+  string started_at = 8;
+  string completed_at = 9;
+  string timeout_at = 10;
+  string assigned_worker_id = 11;
+  optional ExecutionHistoryContext context = 12;
+  optional ExecutionHistoryResult result = 13;
+}
+
+message ExecutionHistoryContext {
+  string environment = 1;
+  string trigger_source = 2;
+  string user_id = 3;
+  map<string, string> parameters = 4;
+}
+
+message ExecutionHistoryResult {
+  string status = 1;
+  optional int32 status_code = 2;
+  optional int64 response_size_bytes = 3;
+  string error_code = 4;
+  string error_message = 5;
+  string error_stack = 6;
+}

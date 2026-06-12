@@ -105,6 +105,7 @@ else {
             AttributeName=priority,AttributeType=N `
             AttributeName=assignedWorkerId,AttributeType=S `
             AttributeName=assignedAt,AttributeType=S `
+            AttributeName=jobId,AttributeType=S `
         --key-schema `
             AttributeName=queueId,KeyType=HASH `
             AttributeName=scheduledFor,KeyType=RANGE `
@@ -126,6 +127,16 @@ else {
                     `"KeySchema`": [
                         {`"AttributeName`":`"assignedWorkerId`",`"KeyType`":`"HASH`"},
                         {`"AttributeName`":`"assignedAt`",`"KeyType`":`"RANGE`"}
+                    ],
+                    `"Projection`": {
+                        `"ProjectionType`":`"ALL`"
+                    }
+                },
+                {
+                    `"IndexName`": `"JobExecutionsIndex`",
+                    `"KeySchema`": [
+                        {`"AttributeName`":`"jobId`",`"KeyType`":`"HASH`"},
+                        {`"AttributeName`":`"scheduledFor`",`"KeyType`":`"RANGE`"}
                     ],
                     `"Projection`": {
                         `"ProjectionType`":`"ALL`"

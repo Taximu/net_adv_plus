@@ -675,3 +675,108 @@ You might also emit **`JobCreationRequested`** before commit and **`JobCreationF
 4. If you need to process 1 million jobs scheduled for execution at the same time, what processing model and architecture would you choose?
 
 Use a **durable queue or partitioned event log** (Kafka/SQS/etc.) plus **many stateless workers** behind **autoscaling** (Kubernetes, serverless with concurrency limits), **shard by partition key** (tenant or job type) to avoid hot keys, **rate limits** to downstream systems, **idempotency keys**, **scheduler** that enqueues **fire times** rather than running 1M timers in one process, and **backpressure**—optionally a **two-tier** model: quick **acceptance** path and **throttled execution** to protect dependencies. **Batch** analytics afterward for **SLA reporting**.
+
+## Module 7 — Data formats, HTTP/2, storage IO, serialization & compression
+
+### Data Storage and Transmission — serialization formats
+
+1. List the advantages and disadvantages of JSON, XML, CSV, Thrift, and Protocol Buffers. For each format, identify scenarios in high-load systems where it would be the most appropriate choice.
+
+**JSON**  
+-**Advantages**: Human-readable, universal tooling, schema-on-read, great for browsers and public APIs.  
+-**Disadvantages**: Verbose, slower parse/stringify, weak numeric/typing story, no compact binary.  
+-**High-load fit**: Edge APIs, config, interoperability; pair with compression or a binary internal path for hot paths.
+
+**XML**  
+-**Advantages**: Mature ecosystem, validation (XSD), namespaces, enterprise interoperability.  
+-**Disadvantages**: Very verbose, heavy parsing, complex stacks (SOAP, signatures).  
+-**High-load fit**: Legacy B2B, regulated integrations; usually not first choice for new high-QPS services.
+
+**CSV**  
+-**Advantages**: Tiny spec, trivial streaming, great for bulk tabular export/import.  
+-**Disadvantages**: No standard types, escaping/encoding pain, poor nested data, fragile evolution.  
+-**High-load fit**: Data pipelines, warehouse loads, reports; not for RPC between microservices.
+
+**Apache Thrift**  
+-**Advantages**: IDL + multiple languages, compact binary RPC, evolvable with care.  
+-**Disadvantages**: Smaller ecosystem than JSON/Proto; tooling varies by language.  
+-**High-load fit**: Polyglot internal RPC, services needing compact binary and defined contracts.
+
+**Protocol Buffers**  
+-**Advantages**: Compact, fast parse, strong typing, backward-compatible field evolution, great codegen (e.g. gRPC).  
+-**Disadvantages**: Not human-readable without tools; schema management required.  
+-**High-load fit**: Service-to-service traffic, mobile backends, anything latency/throughput sensitive.
+
+### Network IO — HTTP/2
+
+1. Explain the key improvements HTTP/2 offers over HTTP/1.1. How do these improvements enhance the performance of high-load systems?
+
+-**Multiplexing**: Many streams on one TCP connection — fewer connections, less handshake overhead, better utilization.  
+-**Header compression (HPACK)**: Smaller repeated metadata — less bandwidth and CPU on headers.  
+-**Binary framing**: Efficient parsing and flow control at stream level.  
+-**Server push** (optional): Proactive asset delivery (use sparingly).  
+-**High-load**: Cuts connection fan-out, improves tail latency under bursty parallel requests, reduces bytes on the wire.
+
+2. What are the potential challenges when migrating from HTTP/1.1 to HTTP/2 in a high-load environment?
+
+-**TLS**: HTTP/2 is effectively HTTPS-first in browsers — cert/termination and LB behavior must align.  
+-**Head-of-line blocking (TCP)**: One lost packet can still stall all streams on that connection (HTTP/3/QUIC addresses this).  
+-**Proxies/LBs**: Correct ALPN, stream limits, timeouts, and buffer tuning; debug is harder than text HTTP/1.1.  
+-**App assumptions**: Pipelining differences, connection coalescing, and middleware that buffered whole bodies may need review.
+
+3. Discuss the benefits and trade-offs of using HTTP/2 multiplexing and server push features in high-load systems.
+
+-**Multiplexing — benefits**: Parallel requests without opening many TCP connections; better fairness and scheduling.  
+-**Multiplexing — trade-offs**: Shared TCP congestion window; one slow/bad path affects all streams; need stream prioritization discipline (often underused).  
+-**Server push — benefits**: Can remove round-trips for “obvious” secondary resources.  
+-**Server push — trade-offs**: Cache waste, complexity, often low ROI vs HTTP/2 + good caching/preload; many stacks deprecate or disable it.
+
+4. How does the binary framing layer in HTTP/2 contribute to network efficiency?
+
+Fixed-size frames and length-prefixed payloads enable fast demux, precise flow control, and fewer ambiguous parse states than textual chunking — higher wire efficiency and predictable parser behavior at scale.
+
+### Storage IO — HDD, SSD, NVMe, RAID
+
+1. Compare and contrast the performance characteristics of HDD, SSD, NVMe, and different RAID configurations.
+
+-**HDD**: High capacity, low $/GB; ms random seek; great sequential scans, poor random IOPS.  
+-**SATA SSD**: Much better random IOPS than HDD; still limited by SATA/AHCI in some cases.  
+-**NVMe**: Lowest latency, highest IOPS and bandwidth; best for hot data and strict SLAs.  
+-**RAID**: Striping (0) increases throughput; mirroring (1) improves read redundancy; parity (5/6) balances capacity and fault tolerance with write amplification and rebuild risk on large arrays.
+
+2. In a high-load system, what are the key factors to consider when choosing between NVMe, SSDs, and HDDs for data storage?
+
+-**Workload**: Random small I/O and latency-sensitive paths → NVMe; mixed → SSD; cold/archival/sequential bulk → HDD.  
+-**Durability & ops**: Endurance (DWPD/TBW), failure domains, backup/restore time.  
+-**Cost**: $/GB vs $/IOPS; often tiered: NVMe hot, SSD warm, HDD cold.
+
+3. How can RAID configurations be used to scale storage performance and reliability in high-load systems?
+
+-**RAID 0**: Throughput scale, no redundancy — avoid for production data without higher-level replication.  
+-**RAID 1/10**: Read scaling + fault tolerance; write cost of mirroring.  
+-**RAID 5/6**: Capacity-efficient fault tolerance; parity writes and rebuild stress during disk failure.
+
+4. Discuss the implications of storage IO bottlenecks in high-load systems and how they can be mitigated.
+
+-**Symptoms**: Queue depth saturation, high await, CPU iowait, checkpoint stalls.  
+-**Mitigations**: Faster media, wider striping, separation of WAL/journal and data, batching writes, read replicas, caching, object storage for blobs, right-sized filesystem/block settings, and fixing hot keys/queries.
+
+### Serialization and compression
+
+1. What are the performance considerations when choosing a serialization format (e.g., JSON, XML, Thrift, Protocol Buffers) for a high-load system?
+
+Payload size (bytes on wire), parse CPU, schema evolution, language support, streaming vs document model, security (e.g. entity expansion in XML, huge JSON), and compatibility with compression.
+
+2. Provide examples of how efficient serialization can reduce network latency and improve throughput in high-load systems.
+
+Smaller messages and faster decode mean less bandwidth, fewer GC allocations, and higher RPS per core — e.g. switching a hot internal API from JSON to Protobuf often cuts p99 latency and raises max sustainable QPS on the same hardware.
+
+3. How does data compression impact network IO and overall system performance in high-load environments?
+
+Fewer bytes speed transfers on bandwidth-bound links; encode/decode costs CPU — compression helps when the network is the bottleneck and hurts when CPU or latency dominates on small or already-binary payloads.
+
+4. Compare different compression algorithms (e.g., gzip, snappy, zlib) in terms of their compression ratios and performance impacts on serialization and deserialization processes.
+
+-**gzip / zlib**: Stronger compression than Snappy/LZ4; slower, higher CPU; common for HTTP `Content-Encoding: gzip`.  
+-**Snappy / LZ4**: Weaker ratio; very fast compress/decompress; good for internal pipelines, logs, RPC when CPU is precious.  
+-**Rule of thumb**: Prefer **fast codecs** on hot internal paths; **gzip/Brotli** for text-heavy web when supported; measure with representative payloads and hardware.

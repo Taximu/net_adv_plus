@@ -5,6 +5,7 @@
 #   docker compose up -d --build
 #
 # API:        http://localhost:5000/swagger
+# Orchestrator (UC 2.3 history): http://localhost:5001/health — JSON + gRPC (see JobScheduler.JobOrchestrator/README.md)
 # Redpanda UI: http://localhost:8888
 # Postgres:   localhost:55432 (job_admin / StrongPass123) — avoid clashing with host 5432
 # DynamoDB:   http://localhost:18000 (admin optional on 8001 if you add dynamodb-admin)
@@ -168,19 +169,33 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.joborchestrator
     depends_on:
+      postgres:
+        condition: service_healthy
       api:
         condition: service_started
+      dynamodb-init:
+        condition: service_completed_successfully
       redpanda:
         condition: service_healthy
       topic-init:
         condition: service_completed_successfully
     environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
       Messaging__Consumers__Lifecycle__BootstrapServers: "redpanda:9092"
       Messaging__Consumers__Lifecycle__GroupId: "job-orchestrator-lifecycle"
       Messaging__Consumers__Lifecycle__AutoOffsetReset: "earliest"
       Orchestrator__Batch__ApiBaseUrl: "http://api:8080"
       Orchestrator__Batch__IntervalSeconds: "30"
       Orchestrator__Batch__PendingPeekLimit: "25"
+      Database__PostgresWriteConnectionString: "Host=postgres;Port=5432;Database=job_config_db;Username=job_admin;Password=StrongPass123"
+      Database__PostgresReadConnectionStrings__0: "Host=postgres;Port=5432;Database=job_config_db;Username=job_admin;Password=StrongPass123"
+      Database__PostgresReadConnectionStrings__1: "Host=postgres;Port=5432;Database=job_config_db;Username=job_admin;Password=StrongPass123"
+      DynamoDB__ServiceUrl: "http://dynamodb-local:8000"
+      DynamoDB__AccessKeyId: "local"
+      DynamoDB__SecretAccessKey: "local"
+    ports:
+      - "5001:8080"
     networks:
       - stack
 

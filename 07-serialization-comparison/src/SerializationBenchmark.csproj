@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>SerializationBenchmark</AssemblyName>
+    <RootNamespace>SerializationComparison</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.67.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="protobuf-net" Version="3.2.45" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\JobScheduler.BL\JobScheduler.BL.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Protobuf Include="Protos\job_execution_history.proto" GrpcServices="None" ProtoRoot="Protos" />
+  </ItemGroup>
+</Project>

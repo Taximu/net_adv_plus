@@ -53,6 +53,7 @@ else {
             AttributeName=priority,AttributeType=N `
             AttributeName=assignedWorkerId,AttributeType=S `
             AttributeName=assignedAt,AttributeType=S `
+            AttributeName=jobId,AttributeType=S `
         --key-schema `
             AttributeName=queueId,KeyType=HASH `
             AttributeName=scheduledFor,KeyType=RANGE `
@@ -74,6 +75,16 @@ else {
                     `"KeySchema`": [
                         {`"AttributeName`":`"assignedWorkerId`",`"KeyType`":`"HASH`"},
                         {`"AttributeName`":`"assignedAt`",`"KeyType`":`"RANGE`"}
+                    ],
+                    `"Projection`": {
+                        `"ProjectionType`":`"ALL`"
+                    }
+                },
+                {
+                    `"IndexName`": `"JobExecutionsIndex`",
+                    `"KeySchema`": [
+                        {`"AttributeName`":`"jobId`",`"KeyType`":`"HASH`"},
+                        {`"AttributeName`":`"scheduledFor`",`"KeyType`":`"RANGE`"}
                     ],
                     `"Projection`": {
                         `"ProjectionType`":`"ALL`"
@@ -263,7 +274,7 @@ Write-Host "DynamoDB Setup Complete!" -ForegroundColor Green
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "Tables:" -ForegroundColor Yellow
-Write-Host "  - ExecutionQueue (TTL on ttl, PITR, 2 GSIs: PendingExecutionsIndex, WorkerAssignmentsIndex)" -ForegroundColor Gray
+Write-Host "  - ExecutionQueue (TTL on ttl, PITR, 3 GSIs: PendingExecutionsIndex, WorkerAssignmentsIndex, JobExecutionsIndex)" -ForegroundColor Gray
 Write-Host "  - WorkerNodes (PITR)" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Replication is automatic (DynamoDB default, multi-AZ within region)." -ForegroundColor Green

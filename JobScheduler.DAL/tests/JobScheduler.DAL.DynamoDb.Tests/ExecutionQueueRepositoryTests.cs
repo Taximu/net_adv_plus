@@ -183,4 +183,81 @@ public class ExecutionQueueRepositoryTests
             await repo.DeleteAsync(id, scheduled, ct);
         }
     }
+
+    [Fact]
+    public async Task QueryByJobId_returns_items_for_partition_newest_first()
+    {
+        using var test = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var ct = test.Token;
+
+        await _fixture.EnsureLocalRespondsAsync(ct);
+        using var scope = _fixture.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IExecutionQueueRepository>();
+
+        var jobId = $"job-hist-{Guid.NewGuid():N}";
+        var q1 = $"dal-hist-a-{Guid.NewGuid():N}";
+        var q2 = $"dal-hist-b-{Guid.NewGuid():N}";
+        var older = "2026-01-02T10:00:00.0000000Z";
+        var newer = "2026-06-02T10:00:00.0000000Z";
+
+        try
+        {
+            await repo.PutAsync(
+                new ExecutionQueueItem
+                {
+                    QueueId = q1,
+                    ScheduledFor = older,
+                    JobId = jobId,
+                    ScheduleId = "s1",
+                    QueueStatus = "completed",
+                    Priority = 5,
+                    RetryCount = 0,
+                    MaxRetries = 3,
+                    StartedAt = older,
+                    CompletedAt = older
+                },
+                ct);
+
+            await repo.PutAsync(
+                new ExecutionQueueItem
+                {
+                    QueueId = q2,
+                    ScheduledFor = newer,
+                    JobId = jobId,
+                    ScheduleId = "s2",
+                    QueueStatus = "completed",
+                    Priority = 5,
+                    RetryCount = 0,
+                    MaxRetries = 3,
+                    StartedAt = newer,
+                    CompletedAt = newer
+                },
+                ct);
+
+            var (page, next) = await repo.QueryByJobIdAsync(jobId, limit: 10, paginationToken: null, scanIndexForward: false, ConsistencyLevel.Eventual, ct);
+            Assert.Null(next);
+            Assert.Equal(2, page.Count);
+            Assert.Equal(newer, page[0].ScheduledFor);
+            Assert.Equal(older, page[1].ScheduledFor);
+        }
+        finally
+        {
+            await repo.DeleteAsync(q1, older, ct);
+            await repo.DeleteAsync(q2, newer, ct);
+        }
+    }
+
+    [Fact]
+    public async Task QueryByJobId_invalid_cursor_throws_ArgumentException()
+    {
+        using var test = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var ct = test.Token;
+
+        await _fixture.EnsureLocalRespondsAsync(ct);
+        using var scope = _fixture.Services.CreateScope();
+        var repo = scope.ServiceProvider.GetRequiredService<IExecutionQueueRepository>();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            repo.QueryByJobIdAsync("any-job", 5, "not-a-valid-token", false, ConsistencyLevel.Eventual, ct));
+    }
 }

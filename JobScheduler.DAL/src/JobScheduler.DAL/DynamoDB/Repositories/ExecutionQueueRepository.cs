@@ -3,6 +3,7 @@ using Amazon.DynamoDBv2.Model;
 using JobScheduler.DAL.Configuration;
 using JobScheduler.DAL.Consistency;
 using JobScheduler.DAL.DynamoDB.Models;
+using JobScheduler.DAL.DynamoDB.Utilities;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -20,6 +21,7 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
     private readonly ILogger<ExecutionQueueRepository> _logger;
     private const string PendingIndex = "PendingExecutionsIndex";
     private const string WorkerAssignmentsIndex = "WorkerAssignmentsIndex";
+    private const string JobExecutionsIndex = "JobExecutionsIndex";
 
     public ExecutionQueueRepository(
         IDynamoDbContextFactory factory,
@@ -181,6 +183,65 @@ public sealed class ExecutionQueueRepository : IExecutionQueueRepository
             list.Count);
 
         return list;
+    }
+
+    public async Task<(IReadOnlyList<ExecutionQueueItem> Items, string? NextPaginationToken)> QueryByJobIdAsync(
+        string jobId,
+        int limit,
+        string? paginationToken,
+        bool scanIndexForward = false,
+        ConsistencyLevel consistencyLevel = ConsistencyLevel.Eventual,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(jobId))
+            throw new ArgumentException("jobId is required.", nameof(jobId));
+
+        var max = Math.Clamp(limit, 1, 500);
+        LogGsiQueryConsistencyDebug(JobExecutionsIndex, "JobHistory", consistencyLevel);
+
+        Dictionary<string, AttributeValue>? startKey = null;
+        if (!string.IsNullOrWhiteSpace(paginationToken))
+        {
+            try
+            {
+                startKey = DynamoDbExclusiveStartKeyCodec.Decode(paginationToken);
+            }
+            catch (FormatException ex)
+            {
+                throw new ArgumentException("Invalid pagination token.", nameof(paginationToken), ex);
+            }
+        }
+
+        var req = new QueryRequest
+        {
+            TableName = _table,
+            IndexName = JobExecutionsIndex,
+            KeyConditionExpression = "jobId = :jid",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":jid"] = new AttributeValue { S = jobId } },
+            ScanIndexForward = scanIndexForward,
+            Limit = max,
+            ExclusiveStartKey = startKey
+        };
+
+        var page = await _db.QueryAsync(req, cancellationToken).ConfigureAwait(false);
+        var list = new List<ExecutionQueueItem>(page.Items.Count);
+        foreach (var item in page.Items)
+            list.Add(FromItem(item));
+
+        string? next = null;
+        if (page.LastEvaluatedKey is { Count: > 0 })
+            next = DynamoDbExclusiveStartKeyCodec.Encode(page.LastEvaluatedKey);
+
+        _logger.LogDebug(
+            "UC2.3 DynamoDB QueryCompleted Table={Table} Index={Index} Operation=JobHistory ConsistencyLevel={ConsistencyLevel} JobId={JobId} ReturnedCount={ReturnedCount} HasMore={HasMore}",
+            _table,
+            JobExecutionsIndex,
+            consistencyLevel,
+            jobId,
+            list.Count,
+            next != null);
+
+        return (list, next);
     }
 
     public async Task<bool> TryClaimAsync(string queueId, string scheduledFor, string workerId, string assignedAtIso, CancellationToken cancellationToken = default)

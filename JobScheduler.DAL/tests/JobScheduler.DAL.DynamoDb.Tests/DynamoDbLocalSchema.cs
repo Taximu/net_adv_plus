@@ -45,7 +45,8 @@ internal static class DynamoDbLocalSchema
                 new AttributeDefinition("queueStatus", ScalarAttributeType.S),
                 new AttributeDefinition("priority", ScalarAttributeType.N),
                 new AttributeDefinition("assignedWorkerId", ScalarAttributeType.S),
-                new AttributeDefinition("assignedAt", ScalarAttributeType.S)
+                new AttributeDefinition("assignedAt", ScalarAttributeType.S),
+                new AttributeDefinition("jobId", ScalarAttributeType.S)
             ],
             KeySchema =
             [
@@ -75,6 +76,16 @@ internal static class DynamoDbLocalSchema
                     [
                         new KeySchemaElement("assignedWorkerId", KeyType.HASH),
                         new KeySchemaElement("assignedAt", KeyType.RANGE)
+                    ],
+                    Projection = new Projection { ProjectionType = ProjectionType.ALL }
+                },
+                new GlobalSecondaryIndex
+                {
+                    IndexName = "JobExecutionsIndex",
+                    KeySchema =
+                    [
+                        new KeySchemaElement("jobId", KeyType.HASH),
+                        new KeySchemaElement("scheduledFor", KeyType.RANGE)
                     ],
                     Projection = new Projection { ProjectionType = ProjectionType.ALL }
                 }
