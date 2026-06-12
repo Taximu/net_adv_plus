@@ -1,11 +1,14 @@
 # Full local stack: PostgreSQL (catalog), DynamoDB Local (execution queue), Redpanda (Kafka API),
-# JobScheduler.Api + JobManager (catalog consumer) + JobOrchestrator (lifecycle consumer + batch peek).
+# JobScheduler.Api + JobManager (catalog consumer) + JobOrchestrator (lifecycle consumer + batch peek),
+# Prometheus (scrapes /metrics) + Grafana (provisioned dashboard).
 #
 # From this directory:
 #   docker compose up -d --build
 #
 # API:        http://localhost:5000/swagger
 # Orchestrator (UC 2.3 history): http://localhost:5001/health — JSON + gRPC (see JobScheduler.JobOrchestrator/README.md)
+# Prometheus: http://localhost:9090  (targets: api:8080/metrics, orchestrator:8080/metrics)
+# Grafana:    http://localhost:3000  (login admin / admin) — dashboard "Job Scheduler — App metrics"
 # Redpanda UI: http://localhost:8888
 # Postgres:   localhost:55432 (job_admin / StrongPass123) — avoid clashing with host 5432
 # DynamoDB:   http://localhost:18000 (admin optional on 8001 if you add dynamodb-admin)
@@ -196,6 +199,40 @@ services:
       DynamoDB__SecretAccessKey: "local"
     ports:
       - "5001:8080"
+    networks:
+      - stack
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    volumes:
+      # Mount the whole folder so rule_files (alerts/*.yml) resolve next to prometheus.yml.
+      - ./prometheus:/etc/prometheus:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+      - orchestrator
+    networks:
+      - stack
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
     networks:
       - stack
 

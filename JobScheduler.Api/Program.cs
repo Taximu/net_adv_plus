@@ -1,5 +1,6 @@
 using JobScheduler.Api.Contracts;
 using JobScheduler.BL.Extensions;
+using JobScheduler.Observability;
 using JobScheduler.BL.Services;
 using JobScheduler.DAL.Extensions;
 using JobScheduler.DAL.Models;
@@ -8,6 +9,8 @@ using JobScheduler.Messaging;
 using Microsoft.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddJobSchedulerObservability("JobScheduler.Api");
 
 builder.Services.AddDataAccessLayer(builder.Configuration);
 builder.Services.AddDynamoDbDataAccessLayer(builder.Configuration);
@@ -114,5 +117,7 @@ app.MapPost("/api/internal/execution/queue/items", async (ExecutionQueueItem ite
     var location = $"/api/internal/execution/queue/item?queueId={Uri.EscapeDataString(item.QueueId)}&scheduledFor={Uri.EscapeDataString(item.ScheduledFor)}";
     return Results.Created(location, item);
 });
+
+app.MapJobSchedulerMetrics();
 
 app.Run();

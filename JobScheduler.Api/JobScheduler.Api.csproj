@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\JobScheduler.BL\JobScheduler.BL.csproj" />
+    <ProjectReference Include="..\JobScheduler.Observability\JobScheduler.Observability.csproj" />
   </ItemGroup>
 
   <ItemGroup>

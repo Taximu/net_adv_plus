@@ -1,0 +1,202 @@
+# Alerting rules for Job Scheduler services scraped as job=jobscheduler-api | jobscheduler-orchestrator.
+# Tune thresholds to your baselines. Route firing alerts via Alertmanager (Slack / email / Teams).
+
+groups:
+  - name: jobscheduler_resources
+    interval: 1m
+    rules:
+      # Approximate CPU utilization (0–1): total CPU seconds per wall second / logical cores.
+      - alert: JobSchedulerCPUHigh
+        expr: |
+          (
+            sum by (job) (rate(process_cpu_time_seconds_total[5m]))
+          )
+          /
+          clamp_min(avg by (job) (process_cpu_count), 1)
+          >= 0.70
+        for: 5m
+        labels:
+          severity: warning
+          component: jobscheduler
+        annotations:
+          summary: "High CPU (>=70%) on {{ $labels.job }}"
+          channel: "Slack #jobscheduler-alerts; email on-call if sustained or paired with errors."
+          operational_hint: "Check replica count or HPA, recent deploys, traffic spikes, and expensive endpoints; open Grafana CPU panel for the same job."
+
+      - alert: JobSchedulerCPUCritical
+        expr: |
+          (
+            sum by (job) (rate(process_cpu_time_seconds_total[5m]))
+          )
+          /
+          clamp_min(avg by (job) (process_cpu_count), 1)
+          >= 0.85
+        for: 5m
+        labels:
+          severity: critical
+          component: jobscheduler
+        annotations:
+          summary: "Critical CPU (>=85%) on {{ $labels.job }}"
+          channel: "Slack #jobscheduler-alerts + Microsoft Teams Infra channel; page on-call (PagerDuty) if customer-visible."
+          operational_hint: "Scale out or roll back recent release; inspect top CPU consumers and correlation with HTTP or background task rates."
+
+      # No cgroup limit in scrape; threshold is absolute RAM — tune to ~80–90% of your container/pod limit.
+      - alert: JobSchedulerMemoryHigh
+        expr: process_memory_usage_bytes >= 750000000
+        for: 5m
+        labels:
+          severity: warning
+          component: jobscheduler
+        annotations:
+          summary: "High process memory on {{ $labels.job }} (>= ~750 MiB observed RSS-style usage)"
+          channel: "Slack #jobscheduler-alerts; email platform DL if persistent."
+          operational_hint: "Compare to container memory limit; check for leaks or large payloads after last deploy; review dotnet GC / working set panels."
+
+      - alert: JobSchedulerMemoryCritical
+        expr: process_memory_usage_bytes >= 1200000000
+        for: 5m
+        labels:
+          severity: critical
+          component: jobscheduler
+        annotations:
+          summary: "Critical process memory on {{ $labels.job }} (>= ~1.1 GiB)"
+          channel: "Slack + Teams + on-call email; page if OOM risk."
+          operational_hint: "Raise memory limit or reduce replicas’ per-pod load; capture dump only if policy allows; restart is last resort after identifying leak."
+
+  - name: jobscheduler_traffic
+    interval: 1m
+    rules:
+      # HTTP traffic (API) — analogue to “request count / Lambda invocations” for the web tier.
+      - alert: JobSchedulerApiHttpRequestRateHigh
+        expr: |
+          sum by (job) (rate(http_server_request_duration_seconds_count{job="jobscheduler-api"}[5m])) > 80
+        for: 10m
+        labels:
+          severity: warning
+          component: jobscheduler-api
+        annotations:
+          summary: "HTTP request rate high on jobscheduler-api (>80 req/s over 10m)"
+          channel: "Slack #jobscheduler-traffic; email product/SRE if abuse or cost spike suspected."
+          operational_hint: "Rule out health-check storms, integration tests, and DDoS; verify cache hit rates and upstream timeouts; adjust threshold to your p95 daily traffic."
+
+      # Background executions (orchestrator) — analogue to execution / invocation count off HTTP.
+      - alert: JobSchedulerOrchestratorExecutionRateHigh
+        expr: |
+          sum by (job) (rate(jobscheduler_task_executions_total{job="jobscheduler-orchestrator"}[5m])) > 25
+        for: 10m
+        labels:
+          severity: warning
+          component: jobscheduler-orchestrator
+        annotations:
+          summary: "Background task execution rate high on orchestrator (>25/s over 10m)"
+          channel: "Slack #jobscheduler-traffic; email batch owner if unexpected replay."
+          operational_hint: "Check Kafka consumer lag, peek interval, and whether a backlog replay or bad loop is generating work; validate topic traffic."
+
+  - name: jobscheduler_latency
+    interval: 1m
+    rules:
+      - alert: JobSchedulerHttpLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (rate(http_server_request_duration_seconds_bucket{job="jobscheduler-api"}[10m]))
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+          component: jobscheduler-api
+        annotations:
+          summary: "HTTP p95 latency high on jobscheduler-api (>1.5s)"
+          channel: "Slack #jobscheduler-slo; email on-call if paired with elevated 5xx."
+          operational_hint: "Check DB/Dynamo latency, downstream HTTP clients, and cold start; compare to deploy time; drill into slow routes in Grafana."
+
+      - alert: JobSchedulerBackgroundTaskLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (job, le) (rate(jobscheduler_task_execution_duration_seconds_bucket{job="jobscheduler-orchestrator"}[10m]))
+          ) > 45
+        for: 15m
+        labels:
+          severity: warning
+          component: jobscheduler-orchestrator
+        annotations:
+          summary: "Background task p95 duration high on orchestrator (>45s)"
+          channel: "Slack #jobscheduler-slo; Teams core-services if customer jobs delayed."
+          operational_hint: "Inspect pending_peek_batch vs lifecycle_consume breakdown; check API latency from orchestrator to jobscheduler-api and Kafka health."
+
+      - alert: JobSchedulerHttpLatencyP99High
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (job, le) (rate(http_server_request_duration_seconds_bucket{job="jobscheduler-api"}[10m]))
+          ) > 5
+        for: 15m
+        labels:
+          severity: critical
+          component: jobscheduler-api
+        annotations:
+          summary: "HTTP p99 latency critical on jobscheduler-api (>5s)"
+          channel: "Slack + Teams + on-call (PagerDuty optional)."
+          operational_hint: "Tail timeouts and thread pool starvation; check GC pauses and dependency SLIs; treat as incident if error budget burning."
+
+  - name: jobscheduler_reliability
+    interval: 1m
+    rules:
+      # Retry observations from pending peek — sustained non-zero rate in high buckets indicates backlog pressure.
+      - alert: JobSchedulerRetryBacklogElevated
+        expr: |
+          sum by (job) (
+            rate(jobscheduler_retry_backlog_observations_total{job="jobscheduler-orchestrator", retry_bucket=~"2|3plus"}[10m])
+          ) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          component: jobscheduler-orchestrator
+        annotations:
+          summary: "Elevated retry-tier backlog observations (retry_bucket 2+)"
+          channel: "Slack #jobscheduler-reliability; email weekly digest owner."
+          operational_hint: "Sample pending executions in DynamoDB for failing jobs; check downstream failures causing retries; avoid bulk replay until root cause is known."
+
+      # DLQ metric is a placeholder (always 0) in this repo — rule documents intent; disable or replace when a real DLQ exists.
+      - alert: JobSchedulerDlqDepthHigh
+        expr: jobscheduler_dlq_visible_messages > 0
+        for: 5m
+        labels:
+          severity: critical
+          component: jobscheduler
+        annotations:
+          summary: "DLQ visible messages > 0 on {{ $labels.job }}"
+          channel: "Slack #dead-letter + on-call email; PagerDuty if user-visible failures."
+          operational_hint: "Sample messages (redacted), identify poison/schema skew, fix forward before replay; with current app build this should never fire unless DLQ is wired."
+
+  - name: jobscheduler_failed_tasks
+    interval: 1m
+    rules:
+      - alert: JobSchedulerFailedTasksAbsoluteHigh
+        expr: increase(jobscheduler_failed_tasks_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: jobscheduler-orchestrator
+        annotations:
+          summary: "More than 5 failed background tasks in 10m ({{ $labels.job }} / {{ $labels.task_family }})"
+          channel: "Slack #jobscheduler-reliability; email on-call digest."
+          operational_hint: "Inspect orchestrator logs, Kafka consumer errors, and API 5xx from pending peek; check recent deploy and DynamoDB execution rows."
+
+      - alert: JobSchedulerFailedTasksRateHigh
+        expr: |
+          (
+            sum by (job) (rate(jobscheduler_failed_tasks_total[10m]))
+          )
+          /
+          clamp_min(sum by (job) (rate(jobscheduler_tasks_processed_total[10m])), 0.0001)
+          > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          component: jobscheduler-orchestrator
+        annotations:
+          summary: "Background task failure rate > 5% over 10m on {{ $labels.job }}"
+          channel: "Slack #jobscheduler-reliability + Microsoft Teams; page on-call if executions are user-visible."
+          operational_hint: "Compare failed vs processed counters in Grafana; classify http_error vs consume_error vs error; roll back if correlated with release."
