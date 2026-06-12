@@ -780,3 +780,33 @@ Fewer bytes speed transfers on bandwidth-bound links; encode/decode costs CPU �
 -**gzip / zlib**: Stronger compression than Snappy/LZ4; slower, higher CPU; common for HTTP `Content-Encoding: gzip`.  
 -**Snappy / LZ4**: Weaker ratio; very fast compress/decompress; good for internal pipelines, logs, RPC when CPU is precious.  
 -**Rule of thumb**: Prefer **fast codecs** on hot internal paths; **gzip/Brotli** for text-heavy web when supported; measure with representative payloads and hardware.
+
+## Module 8 — Observability (monitoring, logging, tracing)
+
+1. What are the key differences between monitoring and logging and tracing, and how do they contribute to observability in high-load systems?
+
+**Monitoring (metrics)** is time-series data aggregated at low cardinality (rates, histograms, gauges): good for dashboards, SLOs, and alerts at scale. **Logging** is discrete events with context (structured fields, messages): good for debugging specific failures and audits, but volume grows quickly. **Tracing** follows a request or job across services as spans with parent/child links: good for latency breakdown and dependency analysis. Together they give **observability**—understanding why the system behaves a certain way from external signals—without logging every request at full detail; in high-load systems you rely on **metrics for breadth**, **traces for representative paths** (often sampled), and **logs for depth** when something is already suspicious.
+
+2. How does Azure Monitor help in diagnosing and troubleshooting issues in high-load applications?
+
+Azure Monitor is a unified plane for **platform metrics**, **Application Insights** (APM: requests, dependencies, exceptions, live metrics), **Log Analytics** with **KQL** queries across tables, and **alerts/action groups** (email, SMS, webhooks, Logic Apps). For troubleshooting you correlate **metric spikes** with **traces and dependency failures**, drill into **exceptions** and **custom dimensions**, and use **workbooks** for repeatable investigations. For high load you lean on **sampling**, **aggregation**, and **budgeted retention** so telemetry stays affordable while still answering “what broke” and “what got slow.”
+
+3. What features does AWS CloudWatch offer for monitoring and logging, and how can they be leveraged in a high-load environment?
+
+CloudWatch provides **metrics** (standard and custom namespaces), **alarms** and **composite alarms**, **dashboards**, **Logs** with log groups/streams, **Logs Insights** for ad-hoc queries, **metric filters** to turn log patterns into metrics, and integrations with **X-Ray** for tracing. In high-load environments you use **high-resolution metrics** where needed, **metric math** to combine signals, **embedded metric format** for efficient custom metrics, **log retention tiers** and **subscription filters** (e.g. to Kinesis/Firehose/S3) for cost control, and **Contributor Insights** only where cardinality is justified—avoiding per-ID metrics in alerts.
+
+4. Describe how you would set up a monitoring and alerting strategy for a high-load system in Azure or AWS. What tools and metrics would you focus on?
+
+Define **golden signals** (latency, traffic, errors, saturation) plus **queue depth**, **consumer lag**, and **business KPIs** (e.g. jobs succeeded/failed). Instrument apps with **OpenTelemetry** or native agents (Application Insights SDK, CloudWatch agent, ADOT). Send telemetry to **Azure Monitor** or **CloudWatch + X-Ray** (and optionally Prometheus/Grafana). Build **tiered dashboards** (overview vs service detail). Configure **multi-window, multi-burn-rate alerts** on SLOs and **symptom-based** pages (p99 latency, error rate, saturation), not every noisy threshold. Wire **Action Groups** or **SNS → Slack/PagerDuty** with runbooks. Focus metrics: **CPU/memory**, **replica health**, **request/job duration percentiles**, **throughput**, **retry/DLQ**, **dependency timeouts**—all with **bounded dimensions** for alerting.
+
+5. How can log data be effectively collected, stored, and analyzed in a high-load system? Mention specific tools or practices recommended for Azure or AWS environments.
+
+**Collect** with non-blocking agents: **Azure Monitor Agent / Log Analytics** ingestion, or **CloudWatch Logs** via unified CloudWatch agent, Lambda extensions, or **Kinesis Data Firehose** for high-volume pipelines; use **structured JSON** and **correlation IDs**. **Store** with **retention policies**, **archival to cheaper storage** (Blob cool/archive, S3/Glacier), and **separate “security” vs “debug”** streams. **Analyze** with **KQL** (Azure) or **CloudWatch Logs Insights** (AWS), pre-built **metric filters** for known failure signatures, and **sampling** or **dynamic log levels** under load. Practices: **avoid printf debugging at QPS scale**, **hash or drop PII**, **partition by time/service**, and **index only what you query**.
+
+6. What are some of the challenges associated with implementing observability in high-load systems, and how can they be mitigated?
+
+Challenges include **metric cardinality explosion**, **telemetry cost**, **alert fatigue**, **backpressure** from agents, **sampling bias** hiding rare bugs, and **PII/compliance** in logs. Mitigations: **strict label sets** for alerts, **histograms and pre-aggregation**, **SLO-based alerting** and **error budgets**, **tail-based trace sampling**, **async export** so observability never blocks requests, **budget caps** with tiered retention, and **synthetic checks** for critical paths.
+
+7. What are SLIs and SLOs, and how do error budgets help engineering teams balance reliability with feature delivery in high-load systems?
+
+An **SLI** (Service Level Indicator) is a **measured** aspect of behavior, e.g. “proportion of API requests < 300 ms” or “successful job completions per minute.” An **SLO** (Service Level Objective) is a **target** for that SLI over a period, e.g. “99.9% of requests < 300 ms monthly.” The **error budget** is the allowed **unreliability** (1 − SLO): when budget remains, teams can ship faster (more risk); when budget burns, **freeze risky launches**, invest in **hardening and load tests**, and prioritize **reliability work**. In high-load systems this prevents chasing 100% uptime while still protecting users when traffic spikes.

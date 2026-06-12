@@ -4,6 +4,7 @@ using JobScheduler.BL.Services;
 using JobScheduler.DAL.Extensions;
 using JobScheduler.JobOrchestrator;
 using JobScheduler.JobOrchestrator.Grpc;
+using JobScheduler.Observability;
 using JobScheduler.JobOrchestrator.Workers;
 using JobScheduler.Messaging;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -11,6 +12,8 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddJobSchedulerObservability("JobScheduler.JobOrchestrator");
 
 builder.Services.AddResponseCompression(options =>
 {
@@ -25,6 +28,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 
 builder.Services.AddDataAccessLayer(builder.Configuration);
 builder.Services.AddDynamoDbDataAccessLayer(builder.Configuration);
+builder.Services.AddJobSchedulerMessagingPublishers(builder.Configuration);
 builder.Services.AddJobSchedulerBusinessLogic();
 
 builder.Services.Configure<KafkaConsumerOptions>(
@@ -93,5 +97,7 @@ app.MapGet(
     });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+app.MapJobSchedulerMetrics();
 
 await app.RunAsync().ConfigureAwait(false);

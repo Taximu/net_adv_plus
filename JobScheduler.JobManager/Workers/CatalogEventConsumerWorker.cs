@@ -1,8 +1,6 @@
 using System.Text;
 using Confluent.Kafka;
 using JobScheduler.Messaging;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace JobScheduler.JobManager.Workers;
